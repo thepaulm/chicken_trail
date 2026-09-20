@@ -14,7 +14,7 @@
   html,body{height:100%;margin:0}
   body{background:var(--bg);color:var(--txt);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
   #app{display:flex;height:100vh}
-  #side{width:330px;min-width:330px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
+  #side{width:352px;min-width:352px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
   #stage{flex:1;position:relative;min-width:0}
   canvas{display:block;width:100%;height:100%;cursor:crosshair}
   h1{font-size:15px;margin:2px 0 10px;letter-spacing:.3px}
@@ -40,6 +40,8 @@
   table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
   td,th{padding:3px 4px;text-align:right}
   #invTable td:first-child,#bomTable td:first-child{white-space:nowrap}
+  #invTable td,#invTable th{padding:3px 2px}
+  #invTable input[type=number]{width:52px}
   th:first-child,td:first-child{text-align:left}
   th{color:var(--dim);font-weight:500;font-size:11px;border-bottom:1px solid var(--line)}
   tr.short td{color:var(--bad)}
@@ -111,11 +113,12 @@
       <div class="sep"></div>
       <div class="row"><input type="checkbox" id="pooled"><label for="pooled">Panels are interchangeable (one pool)</label></div>
       <div class="row"><label>Cube edge</label><input type="number" id="edge" step="0.5"> <span class="pill">inches</span></div>
-      <div class="row"><label>Connectors per joined edge</label><input type="number" id="cpe" min="1" step="1"></div>
       <div class="row"><label>Screws per connector</label><input type="number" id="spc" min="0" step="1"></div>
       <div class="hint">Only the vertical side connectors are tracked; roof and floor joiners are
       counted in <i>This design</i> but never limit a build. Letters are yours to set &mdash; type the code off your parts bag or manual into the
-      box beside each connector. Untracked parts are still tallied but never limit a build.</div>
+      box beside each connector. <b>Per</b> is how many pieces of hardware one joined edge eats &mdash;
+      a 90&deg; corner takes two, a straight joiner one. Untracked parts are still tallied but never
+      limit a build.</div>
     </div></div>
 
     <div class="card" id="c-bom"><h2>Bill of materials</h2><div class="body">
@@ -195,10 +198,10 @@ const PARTS = [
   {id:"floor",    group:"Panels",     name:"Floor panel",           have:0,  track:true},
   {id:"door",     group:"Panels",     name:"Door / gate",           have:2,  track:true},
   {id:"straight", group:"Side connectors", name:"Straight joiner", have:0, track:false, letter:"E"},
-  {id:"out90",    group:"Side connectors", name:"Outside 90\u00b0 corner",  have:0, track:false, letter:"D"},
-  {id:"in90",     group:"Side connectors", name:"Inside 90\u00b0 corner",   have:0, track:false, letter:"F"},
-  {id:"tee",      group:"Side connectors", name:"T joint (3-way)",    have:0, track:false, letter:""},
-  {id:"cross",    group:"Side connectors", name:"Cross joint (4-way)",have:0, track:false, letter:""},
+  {id:"out90",    group:"Side connectors", name:"Outside 90\u00b0",  have:0, track:false, letter:"D"},
+  {id:"in90",     group:"Side connectors", name:"Inside 90\u00b0",   have:0, track:false, letter:"F"},
+  {id:"tee",      group:"Side connectors", name:"T joint",    have:0, track:false, letter:""},
+  {id:"cross",    group:"Side connectors", name:"Cross joint",have:0, track:false, letter:""},
   {id:"screw",    group:"Fasteners",  name:"Screw + wingnut",       have:0, track:false, letter:""},
 ];
 const JOINT_IDS = ["straight","out90","in90","tee","cross"];
@@ -209,7 +212,8 @@ let cubes = new Map();                 // "x,y,z" -> {faces:{}, entrance:bool}
 let inv = {}, track = {}, letter = {};
 let rules = {roofAll:true, groundFloor:false, interFloor:true, support:true, pooled:true};
 let edgeIn = 39;                       // cube edge, inches
-let connPerEdge = 1;                   // connector pieces per joined edge
+// pieces of hardware per joined edge, per connector type - a 90 takes two, a straight one
+let perJoint = {straight:1, out90:2, in90:2, tee:2, cross:2};
 let screwsPerConn = 4;                 // screws + wingnuts per connector
 let tool = "build", level = 0, selected = null, showConn = true, hideRoof = false;
 const undoStack = [];
@@ -306,14 +310,14 @@ function computeBOM(map){
   }
   // Only the vertical (side) edges are tracked - roof and floor joiners are assumed on hand.
   const edges = classifyEdges(map);
-  let horiz = 0, freeEdges = 0;
+  let horiz = 0, freeEdges = 0, jointEdges = 0;
   for(const e of edges){
     if(e.type === "free"){ freeEdges++; continue; }
-    if(e.axis === 2) r[e.type] += connPerEdge;
+    if(e.axis === 2){ r[e.type] += perJoint[e.type]; jointEdges++; }
     else horiz++;
   }
   r.screw = JOINT_IDS.reduce((s,j) => s + r[j], 0) * screwsPerConn;
-  return Object.assign(r, {openings, shared:shared/2, count:map.size, edges, horiz, freeEdges});
+  return Object.assign(r, {openings, shared:shared/2, count:map.size, edges, horiz, freeEdges, jointEdges});
 }
 
 // parts a build is short of; [] means buildable
@@ -815,16 +819,22 @@ function renderInventory(){
       (isJoint ? "<input type='text' maxlength='3' data-letter='"+p.id+"' value='"+letter[p.id]+
                  "' style='width:30px;text-align:center;background:#12151a;color:var(--acc);border:1px solid var(--line);border-radius:3px;padding:2px;font:inherit;font-weight:600'> " : "")+
       p.name+"</td>"+
+      "<td>"+(isJoint ? "<input type='number' min='1' max='9' data-per='"+p.id+"' value='"+perJoint[p.id]+
+              "' style='width:38px'>" : "")+"</td>"+
       "<td><input type='number' min='0' data-inv='"+p.id+"' value='"+inv[p.id]+"'></td>"+
       "<td><input type='checkbox' data-track='"+p.id+"' "+(track[p.id]?"checked":"")+"></td></tr>");
   }
   const t = $("invTable");
-  t.innerHTML = "<tr><th>Part</th><th>Have</th><th>Track</th></tr>" + rows.join("");
+  t.innerHTML = "<tr><th>Part</th><th title='hardware pieces per joined edge'>Per</th>"+
+                "<th>Have</th><th>Track</th></tr>" + rows.join("");
   t.querySelectorAll("[data-inv]").forEach(el => el.oninput = () => {
     inv[el.dataset.inv] = Math.max(0, parseInt(el.value)||0); refresh(false);
   });
   t.querySelectorAll("[data-track]").forEach(el => el.onchange = () => {
     track[el.dataset.track] = el.checked; refresh(false);
+  });
+  t.querySelectorAll("[data-per]").forEach(el => el.oninput = () => {
+    perJoint[el.dataset.per] = Math.max(1, Math.min(9, parseInt(el.value)||1)); refresh(false);
   });
   t.querySelectorAll("[data-letter]").forEach(el => el.oninput = () => {
     letter[el.dataset.letter] = el.value.toUpperCase();
@@ -883,7 +893,8 @@ function renderStats(){
     ["Dead ends", a.deadEnds],
     ["Junctions", a.junctions],
     ["Open passages", b.shared],
-    ["Side connectors", JOINT_IDS.reduce((s,j) => s + b[j], 0)],
+    ["Side joints", b.jointEdges],
+    ["Side connector pieces", JOINT_IDS.reduce((s,j) => s + b[j], 0)],
     ["Roof / floor joiners", b.horiz],
     ["Unjoined panel edges", b.freeEdges],
     ["Reachable from door", a.reached ? a.reached+" / "+b.count : "no door set"],
@@ -951,7 +962,7 @@ function refresh(redraw = true){
 const STORE = "chicken-trail-v1";
 function save(){
   try{
-    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, connPerEdge, screwsPerConn, showConn, hideRoof}));
+    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, perJoint, screwsPerConn, showConn, hideRoof}));
   }catch(e){}
 }
 function load(){
@@ -962,7 +973,7 @@ function load(){
     Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
     Object.assign(letter, s.letter || {}); Object.assign(rules, s.rules || {});
     edgeIn = s.edgeIn || edgeIn;
-    connPerEdge = s.connPerEdge || connPerEdge;
+    Object.assign(perJoint, s.perJoint || {});
     screwsPerConn = s.screwsPerConn == null ? screwsPerConn : s.screwsPerConn;
     if(s.showConn != null) showConn = s.showConn;
     if(s.hideRoof != null) hideRoof = s.hideRoof;
@@ -1049,7 +1060,6 @@ $("preset").onchange = e => {
 };
 $("pooled").onchange = e => { rules.pooled = e.target.checked; refresh(false); };
 $("edge").oninput = e => { edgeIn = parseFloat(e.target.value) || 39; refresh(false); };
-$("cpe").oninput = e => { connPerEdge = Math.max(1, parseInt(e.target.value)||1); refresh(false); };
 $("spc").oninput = e => { screwsPerConn = Math.max(0, parseInt(e.target.value)||0); refresh(false); };
 $("showConn").onchange = e => { showConn = e.target.checked; meshDirty = true; draw(); save(); };
 $("hideRoof").onchange = e => { hideRoof = e.target.checked; meshDirty = true; draw(); save(); };
@@ -1059,7 +1069,7 @@ document.querySelectorAll(".card>h2").forEach(h =>
   h.onclick = () => h.parentElement.classList.toggle("collapsed"));
 
 $("export").onclick = () => {
-  const blob = new Blob([JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, connPerEdge, screwsPerConn}, null, 1)],
+  const blob = new Blob([JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, perJoint, screwsPerConn}, null, 1)],
                         {type:"application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "chicken-trail.json"; a.click();
@@ -1076,7 +1086,7 @@ $("file").onchange = e => {
       Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
       Object.assign(letter, s.letter || {}); Object.assign(rules, s.rules || {});
       edgeIn = s.edgeIn || edgeIn;
-      connPerEdge = s.connPerEdge || connPerEdge;
+      Object.assign(perJoint, s.perJoint || {});
       screwsPerConn = s.screwsPerConn == null ? screwsPerConn : s.screwsPerConn;
       renderInventory(); syncUI(); refresh(); fitView();
     }catch(err){ toast("could not read that file"); }
@@ -1097,7 +1107,6 @@ function syncUI(){
     b.onclick = () => { level = +b.dataset.lvl; meshDirty = true; syncUI(); draw(); });
   $("pooled").checked = rules.pooled;
   $("edge").value = edgeIn;
-  $("cpe").value = connPerEdge;
   $("spc").value = screwsPerConn;
   $("showConn").checked = showConn;
   $("hideRoof").checked = hideRoof;
