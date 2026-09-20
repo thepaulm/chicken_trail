@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chicken Trail Designer</title>
+<style>
+  :root{
+    --bg:#15181c; --panel:#1d2127; --panel2:#242932; --line:#333a45;
+    --txt:#e6e9ee; --dim:#9aa4b2; --acc:#e0a33e; --good:#5fb37a; --bad:#d9635f; --blue:#5b9dd9;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{background:var(--bg);color:var(--txt);font:13px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+  #app{display:flex;height:100vh}
+  #side{width:330px;min-width:330px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
+  #stage{flex:1;position:relative;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  h1{font-size:15px;margin:2px 0 10px;letter-spacing:.3px}
+  h1 span{color:var(--acc)}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;margin-bottom:8px}
+  .card>h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);margin:0;padding:8px 10px;
+    border-bottom:1px solid var(--line);cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+  .card>h2::after{content:"\25BE";color:var(--dim);font-size:10px}
+  .card.collapsed>h2::after{content:"\25B8"}
+  .card.collapsed>.body{display:none}
+  .body{padding:9px 10px}
+  .row{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .row:last-child{margin-bottom:0}
+  label{color:var(--dim)}
+  button{background:#2e343f;color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:5px 9px;
+    font:inherit;cursor:pointer}
+  button:hover{background:#3a4250}
+  button.on{background:var(--acc);border-color:var(--acc);color:#17191d;font-weight:600}
+  button.sm{padding:3px 7px;font-size:12px}
+  input[type=number]{background:#12151a;color:var(--txt);border:1px solid var(--line);border-radius:4px;
+    padding:4px 6px;width:66px;font:inherit}
+  input[type=checkbox]{accent-color:var(--acc)}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  td,th{padding:3px 4px;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--dim);font-weight:500;font-size:11px;border-bottom:1px solid var(--line)}
+  tr.short td{color:var(--bad)}
+  tr.ok td.spare{color:var(--good)}
+  .num{font-family:var(--mono)}
+  .hint{color:var(--dim);font-size:11px;margin-top:6px;line-height:1.4}
+  .pill{display:inline-block;background:#2a3038;border:1px solid var(--line);border-radius:10px;padding:1px 7px;
+    font-size:11px;color:var(--dim)}
+  #hud{position:absolute;left:10px;top:10px;background:rgba(21,24,28,.85);border:1px solid var(--line);
+    border-radius:6px;padding:7px 10px;font-family:var(--mono);font-size:12px;pointer-events:none;white-space:pre}
+  #legend{position:absolute;right:10px;top:10px;background:rgba(21,24,28,.85);border:1px solid var(--line);
+    border-radius:6px;padding:7px 10px;font-size:11px;color:var(--dim);pointer-events:none}
+  #legend b{color:var(--txt);font-weight:500}
+  #toast{position:absolute;left:50%;transform:translateX(-50%);bottom:24px;background:#000a;border:1px solid var(--line);
+    border-radius:20px;padding:6px 14px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .facebtn{width:100%;display:flex;justify-content:space-between;align-items:center}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .sep{height:1px;background:var(--line);margin:8px -10px}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <h1>Chicken&nbsp;Trail <span>Designer</span></h1>
+
+    <div class="card" id="c-build"><h2>Build</h2><div class="body">
+      <div class="row">
+        <button class="tool on" data-tool="build">Build</button>
+        <button class="tool" data-tool="erase">Erase</button>
+        <button class="tool" data-tool="entrance">Coop door</button>
+      </div>
+      <div class="row"><label>Level</label><span id="levelBtns"></span></div>
+      <div class="row">
+        <button class="sm" id="rotL">Rotate &larr;</button>
+        <button class="sm" id="rotR">Rotate &rarr;</button>
+        <button class="sm" id="fit">Fit view</button>
+        <button class="sm" id="undo">Undo</button>
+      </div>
+      <div class="row"><label>Preset</label>
+        <select id="preset" style="background:#12151a;color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:4px">
+          <option value="">choose…</option>
+          <option value="tunnel">Straight tunnel &times;6</option>
+          <option value="L">L-shaped trail</option>
+          <option value="U">U-shaped trail</option>
+          <option value="ring">Closed loop 3&times;3</option>
+          <option value="block">Block 3&times;2</option>
+          <option value="two">Two-story tunnel</option>
+        </select>
+        <button class="sm" id="clear">Clear</button>
+      </div>
+      <div class="hint">Click a cell to place / select. Drag with right or middle mouse to pan, wheel to zoom.
+      Keys: <b>1-4</b> level, <b>q/e</b> rotate, <b>b/x/d</b> tools, <b>z</b> undo.</div>
+    </div></div>
+
+    <div class="card" id="c-inv"><h2>Parts on hand</h2><div class="body">
+      <table id="invTable"></table>
+      <div class="sep"></div>
+      <div class="row"><input type="checkbox" id="pooled"><label for="pooled">Panels are interchangeable (one pool)</label></div>
+      <div class="row"><label>Cube edge</label><input type="number" id="edge" step="0.5"> <span class="pill">inches</span></div>
+      <div class="hint">Untracked parts are still tallied but never limit a build. Set the edge length to match your
+      Anleolife panels (a 1&nbsp;m panel is 39.4&nbsp;in).</div>
+    </div></div>
+
+    <div class="card" id="c-bom"><h2>Bill of materials</h2><div class="body">
+      <table id="bomTable"></table>
+      <div class="hint" id="bomNote"></div>
+    </div></div>
+
+    <div class="card" id="c-stats"><h2>This design</h2><div class="body"><table id="statTable"></table></div></div>
+
+    <div class="card" id="c-cap"><h2>What your parts can build</h2><div class="body">
+      <table id="capTable"></table>
+      <div class="hint">Largest version of each shape your tracked parts allow, under the current rules.
+      The limiting part is what to buy next.</div>
+    </div></div>
+
+    <div class="card collapsed" id="c-rules"><h2>Rules</h2><div class="body">
+      <div class="row"><input type="checkbox" id="r-roofAll"><label for="r-roofAll">Roof every open top</label></div>
+      <div class="row"><input type="checkbox" id="r-groundFloor"><label for="r-groundFloor">Floor panels at ground level</label></div>
+      <div class="row"><input type="checkbox" id="r-interFloor"><label for="r-interFloor">Floor panel between stacked levels</label></div>
+      <div class="row"><input type="checkbox" id="r-support"><label for="r-support">Cubes need support below</label></div>
+      <div class="hint">Shared faces between neighbouring cubes use no panel &mdash; that is the open passage the birds walk through.</div>
+    </div></div>
+
+    <div class="card collapsed" id="c-sel"><h2>Selected cube</h2><div class="body" id="selBody"></div></div>
+
+    <div class="card collapsed" id="c-file"><h2>Save / load</h2><div class="body">
+      <div class="row"><button class="sm" id="export">Export JSON</button><button class="sm" id="import">Import JSON</button>
+      <button class="sm" id="png">Save PNG</button></div>
+      <div class="hint">The design and your parts list autosave in this browser.</div>
+      <input type="file" id="file" accept=".json" style="display:none">
+    </div></div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hud"></div>
+    <div id="legend">
+      <b>Legend</b><br>
+      <span class="swatch" style="background:#c9a227"></span>wall panel<br>
+      <span class="swatch" style="background:#7aa7d9"></span>roof panel<br>
+      <span class="swatch" style="background:#8a6bbf"></span>floor panel<br>
+      <span class="swatch" style="background:#e0703a"></span>door / gate<br>
+      <span class="swatch" style="background:#3a4450"></span>open passage
+    </div>
+    <div id="toast"></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- model
+const GRID = 24, LEVELS = 4;
+const K = (x,y,z) => x+","+y+","+z;
+const parseK = k => k.split(",").map(Number);
+
+const SIDES = [
+  {id:"E", name:"East",  d:[ 1, 0, 0]},
+  {id:"W", name:"West",  d:[-1, 0, 0]},
+  {id:"S", name:"South", d:[ 0, 1, 0]},
+  {id:"N", name:"North", d:[ 0,-1, 0]},
+];
+const FACE_MODES = ["auto","wall","open","door"];
+
+const PARTS = [
+  {id:"wall",      name:"Side panel",   have:24, track:true},
+  {id:"roof",      name:"Roof panel",   have:12, track:true},
+  {id:"floor",     name:"Floor panel",  have:0,  track:true},
+  {id:"door",      name:"Door / gate",  have:2,  track:true},
+  {id:"connector", name:"Corner connector", have:40, track:false},
+  {id:"bar",       name:"Frame bar",    have:60, track:false},
+];
+
+let cubes = new Map();                 // "x,y,z" -> {faces:{}, entrance:bool}
+let inv   = {}, track = {};
+let rules = {roofAll:true, groundFloor:false, interFloor:true, support:true, pooled:true};
+let edgeIn = 39;                       // cube edge, inches
+let tool = "build", level = 0, selected = null;
+let camRot = 0, zoom = 1, panX = 0, panY = 0;
+const undoStack = [];
+
+PARTS.forEach(p => { inv[p.id] = p.have; track[p.id] = p.track; });
+
+// ---------------------------------------------------------------- bill of materials
+function addLattice(verts, edges, x, y, z){
+  for(let i=0;i<2;i++) for(let j=0;j<2;j++) for(let m=0;m<2;m++) verts.add(K(x+i,y+j,z+m));
+  for(let j=0;j<2;j++) for(let m=0;m<2;m++) edges.add("X"+K(x,y+j,z+m));
+  for(let i=0;i<2;i++) for(let m=0;m<2;m++) edges.add("Y"+K(x+i,y,z+m));
+  for(let i=0;i<2;i++) for(let j=0;j<2;j++) edges.add("Z"+K(x+i,y+j,z));
+}
+
+function computeBOM(map){
+  const r = {wall:0, roof:0, floor:0, door:0, connector:0, bar:0};
+  let openings = 0, shared = 0;
+  const verts = new Set(), edges = new Set();
+  for(const [k,c] of map){
+    const [x,y,z] = parseK(k);
+    const f = c.faces || {};
+    for(const s of SIDES){
+      if(map.has(K(x+s.d[0], y+s.d[1], z))){ shared++; continue; }
+      const m = f[s.id] || "auto";
+      if(m === "open") openings++;
+      else if(m === "door") r.door++;
+      else r.wall++;
+    }
+    const above = map.has(K(x,y,z+1)), below = map.has(K(x,y,z-1));
+    const mT = f.T || "auto";
+    if(!above){
+      if(mT === "open") openings++;
+      else if(mT === "door") r.door++;
+      else if(rules.roofAll) r.roof++;
+    } else shared++;
+    const mB = f.B || "auto";
+    if(mB === "door") r.door++;
+    else if(mB === "open"){ if(!below) openings++; }
+    else if(z === 0){ if(rules.groundFloor) r.floor++; }
+    else if(below){ if(rules.interFloor) r.floor++; }
+    else r.floor++;                                  // unsupported cube needs its own floor
+    addLattice(verts, edges, x, y, z);
+  }
+  r.connector = verts.size;
+  r.bar = edges.size;
+  return Object.assign(r, {openings, shared, count:map.size});
+}
+
+// parts a build is short of; [] means buildable
+function shortOf(b){
+  const out = [];
+  if(rules.pooled){
+    const need = b.wall + b.roof + b.floor;
+    const have = ["wall","roof","floor"].reduce((s,p) => s + (track[p] ? inv[p] : 0), 0);
+    const anyTracked = ["wall","roof","floor"].some(p => track[p]);
+    if(anyTracked && need > have) out.push("panels");
+  } else {
+    for(const p of ["wall","roof","floor"]) if(track[p] && b[p] > inv[p]) out.push(p);
+  }
+  for(const p of ["door","connector","bar"]) if(track[p] && b[p] > inv[p]) out.push(p);
+  return out;
+}
+
+// ---------------------------------------------------------------- shape generators (capability study)
+function mapFromCells(cells){
+  const m = new Map();
+  for(const [x,y,z] of cells) m.set(K(x,y,z), {faces:{}});
+  return m;
+}
+const rect = (w,d,levels=1) => {
+  const out = [];
+  for(let z=0;z<levels;z++) for(let x=0;x<w;x++) for(let y=0;y<d;y++) out.push([x,y,z]);
+  return out;
+};
+const ring = k => {
+  const out = [];
+  for(let x=0;x<k;x++) for(let y=0;y<k;y++) if(x===0||y===0||x===k-1||y===k-1) out.push([x,y,0]);
+  return out;
+};
+const SHAPES = [
+  {name:"Straight tunnel",  unit:"cubes", gen:n => rect(n,1),      size:n => n},
+  {name:"Two-wide run",     unit:"cubes", gen:n => rect(n,2),      size:n => 2*n},
+  {name:"Square block",     unit:"cubes", gen:n => rect(n,n),      size:n => n*n},
+  {name:"Closed loop",      unit:"cubes", gen:n => ring(n+1),      size:n => 4*(n+1)-4},
+  {name:"Two-story tunnel", unit:"cubes", gen:n => rect(n,1,2),    size:n => 2*n},
+];
+
+function capability(){
+  return SHAPES.map(s => {
+    let best = 0, bestBom = null, limit = null;
+    for(let n=1;n<=40;n++){
+      const cells = s.gen(n);
+      if(cells.length > 400) break;
+      const bom = computeBOM(mapFromCells(cells));
+      const miss = shortOf(bom);
+      if(miss.length){ limit = miss[0]; break; }
+      best = n; bestBom = bom;
+    }
+    return {name:s.name, cubes: best ? s.size(best) : 0, bom:bestBom, limit};
+  });
+}
+
+// ---------------------------------------------------------------- graph / path analysis
+function neighbours(k){
+  const [x,y,z] = parseK(k), out = [];
+  const c = cubes.get(k) || {};
+  for(const s of SIDES){
+    const nk = K(x+s.d[0], y+s.d[1], z);
+    if(cubes.has(nk) && (c.faces?.[s.id] !== "wall")) out.push(nk);
+  }
+  if(!rules.interFloor){
+    for(const dz of [1,-1]){ const nk = K(x,y,z+dz); if(cubes.has(nk)) out.push(nk); }
+  }
+  return out;
+}
+function analyse(){
+  const keys = [...cubes.keys()];
+  const seen = new Set();
+  let components = 0, diameter = 0, deadEnds = 0, junctions = 0;
+  const dist = new Map();
+  const bfs = start => {
+    const d = new Map([[start,0]]); const q = [start];
+    for(let i=0;i<q.length;i++) for(const n of neighbours(q[i]))
+      if(!d.has(n)){ d.set(n, d.get(q[i])+1); q.push(n); }
+    return d;
+  };
+  for(const k of keys){
+    const deg = neighbours(k).length;
+    if(deg <= 1) deadEnds++;
+    if(deg >= 3) junctions++;
+    if(seen.has(k)) continue;
+    components++;
+    const comp = [...bfs(k).keys()];
+    comp.forEach(c => seen.add(c));
+    for(const c of comp){ const d = bfs(c); for(const v of d.values()) diameter = Math.max(diameter, v); }
+  }
+  const entrance = keys.find(k => cubes.get(k).entrance);
+  if(entrance){ const d = bfs(entrance); for(const [k,v] of d) dist.set(k,v); }
+  const foot = new Set(keys.map(k => { const [x,y] = parseK(k); return x+","+y; }));
+  return {components, diameter, deadEnds, junctions, footprint:foot.size, dist,
+          reached: entrance ? dist.size : 0};
+}
+
+// ---------------------------------------------------------------- isometric projection
+const TW = 64, TH = 32, TZ = 46;          // tile width, tile height, cube height in px
+const C = (GRID-1)/2;
+let originX = 0, originY = 0;
+
+function rotXY(fx, fy){
+  let dx = fx - C - 0.5, dy = fy - C - 0.5;      // centre of grid at origin
+  for(let i=0;i<camRot;i++){ const t = dx; dx = -dy; dy = t; }
+  return [dx, dy];
+}
+function unrotXY(dx, dy){
+  for(let i=0;i<camRot;i++){ const t = dx; dx = dy; dy = -t; }
+  return [dx + C + 0.5, dy + C + 0.5];
+}
+function world(fx, fy, fz){                 // unscaled isometric coords
+  const [a,b] = rotXY(fx, fy);
+  return [(a-b)*TW/2, (a+b)*TH/2 - fz*TZ];
+}
+function proj(fx, fy, fz){
+  const w = world(fx, fy, fz);
+  return [originX + panX + w[0]*zoom, originY + panY + w[1]*zoom];
+}
+function unproj(sx, sy, fz){
+  const u = (sx - originX - panX)/zoom, v = (sy - originY - panY)/zoom + fz*TZ;
+  const a = u/TW + v/TH, b = v/TH - u/TW;
+  return unrotXY(a, b);
+}
+function cellAt(sx, sy, z){
+  const [fx, fy] = unproj(sx, sy, z);
+  const x = Math.floor(fx), y = Math.floor(fy);
+  return (x>=0 && y>=0 && x<GRID && y<GRID) ? [x,y] : null;
+}
+
+// ---------------------------------------------------------------- drawing
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+let hover = null;
+
+const CUBE_FACES = {
+  T: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
+  B: [[0,0,0],[0,1,0],[1,1,0],[1,0,0]],
+  E: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]],
+  W: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]],
+  S: [[0,1,0],[0,1,1],[1,1,1],[1,1,0]],
+  N: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]],
+};
+const COLOR = {wall:"#c9a227", roof:"#7aa7d9", floor:"#8a6bbf", door:"#e0703a", open:"#3a4450"};
+
+function resize(){
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width*dpr; cv.height = r.height*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  originX = r.width/2; originY = r.height/2;
+  draw();
+}
+function poly(pts){ ctx.beginPath(); pts.forEach((p,i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1])); ctx.closePath(); }
+function area(pts){
+  let a = 0;
+  for(let i=0;i<pts.length;i++){ const p = pts[i], q = pts[(i+1)%pts.length]; a += p[0]*q[1] - q[0]*p[1]; }
+  return a/2;
+}
+function shade(hex, f){
+  const n = parseInt(hex.slice(1),16);
+  const r = Math.min(255,(n>>16)*f)|0, g = Math.min(255,((n>>8)&255)*f)|0, b = Math.min(255,(n&255)*f)|0;
+  return "rgb("+r+","+g+","+b+")";
+}
+
+// what part a given face of a given cube uses, under current rules
+function faceUse(k, fid){
+  const [x,y,z] = parseK(k), c = cubes.get(k), f = c.faces || {};
+  if(fid === "T"){
+    if(cubes.has(K(x,y,z+1))) return "shared";
+    const m = f.T || "auto";
+    if(m === "open") return "open";
+    if(m === "door") return "door";
+    return rules.roofAll ? "roof" : "open";
+  }
+  if(fid === "B"){
+    const below = cubes.has(K(x,y,z-1));
+    const m = f.B || "auto";
+    if(m === "door") return "door";
+    if(m === "open") return below ? "shared" : "open";
+    if(z === 0) return rules.groundFloor ? "floor" : "ground";
+    if(below) return rules.interFloor ? "floor" : "shared";
+    return "floor";
+  }
+  const s = SIDES.find(s => s.id === fid);
+  if(cubes.has(K(x+s.d[0], y+s.d[1], z))) return "shared";
+  const m = f[fid] || "auto";
+  return m === "open" ? "open" : m === "door" ? "door" : "wall";
+}
+
+function drawGroundGrid(){
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#252b33";
+  for(let i=0;i<=GRID;i++){
+    let p = proj(i,0,0), q = proj(i,GRID,0);
+    poly([p,q]); ctx.stroke();
+    p = proj(0,i,0); q = proj(GRID,i,0);
+    poly([p,q]); ctx.stroke();
+  }
+  // level plane marker
+  if(level > 0){
+    ctx.strokeStyle = "rgba(224,163,62,.12)";
+    for(let i=0;i<=GRID;i+=4){
+      let p = proj(i,0,level), q = proj(i,GRID,level); poly([p,q]); ctx.stroke();
+      p = proj(0,i,level); q = proj(GRID,i,level); poly([p,q]); ctx.stroke();
+    }
+  }
+}
+
+function drawCube(k, info){
+  const [x,y,z] = parseK(k), c = cubes.get(k);
+  const ctr = proj(x+0.5, y+0.5, z+0.5);
+  for(const fid of ["B","N","W","E","S","T"]){
+    const pts = CUBE_FACES[fid].map(v => proj(x+v[0], y+v[1], z+v[2]));
+    if(area(pts) <= 0) continue;                       // back face
+    const use = faceUse(k, fid);
+    if(use === "shared" || use === "ground") continue; // nothing there to draw
+    let col = COLOR[use] || COLOR.open;
+    const fc = pts.reduce((s,p) => s+p[0], 0)/4;
+    const lit = fid === "T" ? 1.0 : (fc > ctr[0] ? 0.74 : 0.55);
+    if(use === "open"){
+      ctx.fillStyle = "rgba(20,24,30,.55)";
+      poly(pts); ctx.fill();
+      ctx.setLineDash([4,3]); ctx.strokeStyle = "#6f7d8c"; ctx.lineWidth = 1;
+      poly(pts); ctx.stroke(); ctx.setLineDash([]);
+      continue;
+    }
+    ctx.fillStyle = shade(col, lit);
+    poly(pts); ctx.fill();
+    // mesh hatch
+    ctx.save(); poly(pts); ctx.clip();
+    ctx.strokeStyle = "rgba(0,0,0,.22)"; ctx.lineWidth = 1;
+    const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    for(let i = x0 - (y1-y0); i < x1; i += Math.max(4, 7*zoom)){
+      ctx.beginPath(); ctx.moveTo(i, y0); ctx.lineTo(i + (y1-y0), y1); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.strokeStyle = "rgba(10,12,15,.85)"; ctx.lineWidth = 1;
+    poly(pts); ctx.stroke();
+  }
+  // markers on the top face
+  const t = proj(x+0.5, y+0.5, z+1);
+  if(c.entrance){
+    ctx.fillStyle = "#e0703a"; ctx.font = (13*zoom)+"px system-ui"; ctx.textAlign = "center";
+    ctx.fillText("⌂", t[0], t[1] + 5*zoom);
+  }
+  if(info && info.dist && info.dist.has(k) && !c.entrance){
+    ctx.fillStyle = "rgba(230,233,238,.55)"; ctx.font = (10*zoom)+"px "+"ui-monospace,monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(info.dist.get(k), t[0], t[1] + 4*zoom);
+  }
+  if(k === selected){
+    ctx.strokeStyle = "#e0a33e"; ctx.lineWidth = 2;
+    for(const fid of ["T","E","S","W","N","B"]){
+      const pts = CUBE_FACES[fid].map(v => proj(x+v[0], y+v[1], z+v[2]));
+      if(area(pts) > 0){ poly(pts); ctx.stroke(); }
+    }
+  }
+}
+
+function draw(){
+  const r = cv.getBoundingClientRect();
+  ctx.clearRect(0,0,r.width,r.height);
+  ctx.fillStyle = "#15181c"; ctx.fillRect(0,0,r.width,r.height);
+  drawGroundGrid();
+
+  const info = analyse();
+  const list = [...cubes.keys()].sort((a,b) => {
+    const A = parseK(a), B = parseK(b);
+    const [ax,ay] = rotXY(A[0],A[1]), [bx,by] = rotXY(B[0],B[1]);
+    return (ax+ay) - (bx+by) || A[2] - B[2];
+  });
+  for(const k of list) drawCube(k, info);
+
+  if(hover){
+    const [x,y] = hover;
+    const pts = CUBE_FACES.B.map(v => proj(x+v[0], y+v[1], level+v[2]));
+    ctx.fillStyle = tool === "erase" ? "rgba(217,99,95,.25)" : "rgba(224,163,62,.22)";
+    poly(pts); ctx.fill();
+    ctx.strokeStyle = tool === "erase" ? "#d9635f" : "#e0a33e"; ctx.lineWidth = 1.5;
+    poly(pts); ctx.stroke();
+  }
+  // compass
+  const cx = r.width - 54, cy = r.height - 54;
+  ctx.save(); ctx.translate(cx, cy);
+  ctx.font = "12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const dirs = [["N",0,-1],["E",1,0],["S",0,1],["W",-1,0]];
+  for(const [n,dx,dy] of dirs){
+    let a = dx, b = dy;
+    for(let i=0;i<camRot;i++){ const t = a; a = -b; b = t; }
+    const px = (a-b)*TW/2*0.8, py = (a+b)*TH/2*1.6;
+    ctx.fillStyle = n === "N" ? "#e0a33e" : "#9aa4b2";
+    ctx.fillText(n, px, py);
+  }
+  ctx.restore();
+  hud(info);
+}
+
+function hud(info){
+  const b = computeBOM(cubes);
+  const ft = edgeIn/12;
+  const lines = [
+    "cubes "+b.count+"   level "+level+"   tool "+tool,
+    "trail "+(info.diameter+1)+" cubes ≈ "+((info.diameter+1)*ft).toFixed(1)+" ft",
+    "footprint "+(info.footprint*ft*ft).toFixed(0)+" ft²   volume "+(b.count*ft*ft*ft).toFixed(0)+" ft³",
+  ];
+  document.getElementById("hud").textContent = lines.join("\n");
+}
+
+// ---------------------------------------------------------------- editing
+function snapshot(){
+  undoStack.push(JSON.stringify([...cubes]));
+  if(undoStack.length > 60) undoStack.shift();
+}
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, 1400);
+}
+function place(x,y,z){
+  const k = K(x,y,z);
+  if(cubes.has(k)) return false;
+  if(rules.support && z > 0 && !cubes.has(K(x,y,z-1))){ toast("needs a cube below"); return false; }
+  snapshot();
+  cubes.set(k, {faces:{}, entrance:false});
+  return true;
+}
+function erase(x,y,z){
+  const k = K(x,y,z);
+  if(!cubes.has(k)) return false;
+  if(rules.support && cubes.has(K(x,y,z+1))){ toast("remove the cube above first"); return false; }
+  snapshot();
+  cubes.delete(k);
+  if(selected === k) selected = null;
+  return true;
+}
+function click(x,y){
+  const k = K(x,y,level);
+  if(tool === "erase"){ erase(x,y,level); }
+  else if(tool === "entrance"){
+    if(!cubes.has(k)) return;
+    snapshot();
+    const c = cubes.get(k); c.entrance = !c.entrance;
+    selected = k;
+  } else {
+    if(cubes.has(k)) selected = (selected === k ? null : k);
+    else place(x,y,level);
+  }
+  refresh();
+}
+
+// ---------------------------------------------------------------- presets
+function setCells(cells){
+  snapshot();
+  cubes = new Map();
+  const ox = Math.floor(GRID/2) - 3, oy = Math.floor(GRID/2) - 2;
+  for(const [x,y,z] of cells) cubes.set(K(x+ox, y+oy, z), {faces:{}, entrance:false});
+  const first = cubes.keys().next().value;
+  if(first) cubes.get(first).entrance = true;
+  selected = null;
+}
+const PRESETS = {
+  tunnel: () => rect(6,1),
+  L: () => rect(5,1).concat(rect(1,4).map(([x,y,z]) => [x+4, y+1, z])),
+  U: () => rect(5,1).concat(rect(1,3).map(([x,y,z]) => [x+4,y+1,z]), rect(5,1).map(([x,y,z]) => [x, y+3, z])),
+  ring: () => ring(3),
+  block: () => rect(3,2),
+  two: () => rect(4,1,2),
+};
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+
+function renderInventory(){
+  const t = $("invTable");
+  t.innerHTML = "<tr><th>Part</th><th>Have</th><th>Track</th></tr>" + PARTS.map(p =>
+    "<tr><td>"+p.name+"</td><td><input type='number' min='0' data-inv='"+p.id+"' value='"+inv[p.id]+"'></td>"+
+    "<td><input type='checkbox' data-track='"+p.id+"' "+(track[p.id]?"checked":"")+"></td></tr>").join("");
+  t.querySelectorAll("[data-inv]").forEach(el => el.oninput = () => {
+    inv[el.dataset.inv] = Math.max(0, parseInt(el.value)||0); refresh(false);
+  });
+  t.querySelectorAll("[data-track]").forEach(el => el.onchange = () => {
+    track[el.dataset.track] = el.checked; refresh(false);
+  });
+}
+
+function renderBOM(){
+  const b = computeBOM(cubes);
+  const rows = [];
+  const line = (name, need, have, tracked) => {
+    const spare = have - need;
+    const cls = tracked && spare < 0 ? "short" : "ok";
+    rows.push("<tr class='"+cls+"'><td>"+name+"</td><td class='num'>"+need+"</td>"+
+      "<td class='num'>"+(tracked ? have : "—")+"</td>"+
+      "<td class='num spare'>"+(tracked ? (spare >= 0 ? "+"+spare : spare) : "")+"</td></tr>");
+  };
+  if(rules.pooled){
+    const need = b.wall + b.roof + b.floor;
+    const have = ["wall","roof","floor"].reduce((s,p) => s + inv[p], 0);
+    const tr = ["wall","roof","floor"].some(p => track[p]);
+    line("Panels (pooled)", need, have, tr);
+    rows.push("<tr><td style='padding-left:12px;color:var(--dim)'>&bull; sides</td><td class='num'>"+b.wall+"</td><td></td><td></td></tr>");
+    rows.push("<tr><td style='padding-left:12px;color:var(--dim)'>&bull; roofs</td><td class='num'>"+b.roof+"</td><td></td><td></td></tr>");
+    rows.push("<tr><td style='padding-left:12px;color:var(--dim)'>&bull; floors</td><td class='num'>"+b.floor+"</td><td></td><td></td></tr>");
+  } else {
+    line("Side panels", b.wall, inv.wall, track.wall);
+    line("Roof panels", b.roof, inv.roof, track.roof);
+    line("Floor panels", b.floor, inv.floor, track.floor);
+  }
+  line("Door / gate", b.door, inv.door, track.door);
+  line("Corner connectors", b.connector, inv.connector, track.connector);
+  line("Frame bars", b.bar, inv.bar, track.bar);
+  $("bomTable").innerHTML = "<tr><th>Part</th><th>Need</th><th>Have</th><th>Spare</th></tr>" + rows.join("");
+
+  const miss = shortOf(b);
+  $("bomNote").innerHTML = b.count === 0 ? "Place cubes to see the parts needed."
+    : miss.length ? "<b style='color:var(--bad)'>Short on "+miss.join(", ")+".</b> Shown in red above."
+    : "<b style='color:var(--good)'>Buildable with the parts you have.</b> "+
+      b.shared+" shared faces saved you "+b.shared+" panels.";
+}
+
+function renderStats(){
+  const b = computeBOM(cubes), a = analyse(), ft = edgeIn/12;
+  const rows = [
+    ["Cubes", b.count],
+    ["Footprint", (a.footprint*ft*ft).toFixed(0)+" ft²"],
+    ["Volume", (b.count*ft*ft*ft).toFixed(0)+" ft³"],
+    ["Longest trail", b.count ? (a.diameter+1)+" cubes / "+((a.diameter+1)*ft).toFixed(1)+" ft" : "—"],
+    ["Separate pieces", a.components],
+    ["Dead ends", a.deadEnds],
+    ["Junctions", a.junctions],
+    ["Open passages", b.shared],
+    ["Reachable from door", a.reached ? a.reached+" / "+b.count : "no door set"],
+  ];
+  $("statTable").innerHTML = rows.map(r =>
+    "<tr><td>"+r[0]+"</td><td class='num'>"+r[1]+"</td></tr>").join("");
+}
+
+function renderCapability(){
+  const label = {panels:"panels", wall:"side panels", roof:"roof panels", floor:"floor panels",
+                 door:"doors", connector:"connectors", bar:"frame bars"};
+  $("capTable").innerHTML = "<tr><th>Shape</th><th>Max</th><th>Limited by</th></tr>" +
+    capability().map(c =>
+      "<tr><td>"+c.name+"</td><td class='num'>"+c.cubes+"</td><td style='color:var(--dim)'>"+
+      (c.limit ? (label[c.limit]||c.limit) : "—")+"</td></tr>").join("");
+}
+
+function renderSelection(){
+  const card = $("c-sel"), body = $("selBody");
+  if(!selected || !cubes.has(selected)){
+    body.innerHTML = "<div class='hint'>Click a cube in Build mode to inspect its six faces.</div>";
+    return;
+  }
+  card.classList.remove("collapsed");
+  const [x,y,z] = parseK(selected), c = cubes.get(selected);
+  const faces = [["N","North"],["S","South"],["E","East"],["W","West"],["T","Top"],["B","Bottom"]];
+  body.innerHTML = "<div class='row'><span class='pill'>x "+x+" &middot; y "+y+" &middot; level "+z+"</span>"+
+    (c.entrance ? "<span class='pill' style='color:var(--acc)'>coop door</span>" : "")+"</div>"+
+    "<div class='grid2'>"+ faces.map(([id,name]) => {
+      const mode = (c.faces||{})[id] || "auto";
+      const use = faceUse(selected, id);
+      const col = COLOR[use] || "#3a4450";
+      return "<button class='sm facebtn' data-face='"+id+"'><span>"+name+"</span>"+
+        "<span style='color:var(--dim)'><span class='swatch' style='background:"+col+"'></span>"+
+        (mode === "auto" ? use : mode)+"</span></button>";
+    }).join("") + "</div>" +
+    "<div class='row' style='margin-top:8px'><button class='sm' id='selDel'>Delete cube</button>"+
+    "<button class='sm' id='selReset'>Reset faces</button></div>"+
+    "<div class='hint'>Click a face to cycle auto &rarr; wall &rarr; open &rarr; door.</div>";
+  body.querySelectorAll("[data-face]").forEach(el => el.onclick = () => {
+    snapshot();
+    const id = el.dataset.face;
+    c.faces = c.faces || {};
+    const cur = c.faces[id] || "auto";
+    c.faces[id] = FACE_MODES[(FACE_MODES.indexOf(cur)+1) % FACE_MODES.length];
+    if(c.faces[id] === "auto") delete c.faces[id];
+    refresh();
+  });
+  $("selDel").onclick = () => { const [x,y,z] = parseK(selected); erase(x,y,z); refresh(); };
+  $("selReset").onclick = () => { snapshot(); c.faces = {}; refresh(); };
+}
+
+function refresh(redraw = true){
+  renderBOM(); renderStats(); renderCapability(); renderSelection();
+  if(redraw) draw();
+  save();
+}
+
+// ---------------------------------------------------------------- persistence
+const STORE = "chicken-trail-v1";
+function save(){
+  try{
+    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, rules, edgeIn}));
+  }catch(e){}
+}
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(STORE) || "null");
+    if(!s) return;
+    cubes = new Map(s.cubes || []);
+    Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
+    Object.assign(rules, s.rules || {}); edgeIn = s.edgeIn || edgeIn;
+  }catch(e){}
+}
+
+// ---------------------------------------------------------------- wiring
+function fitView(){
+  camRot = camRot; panX = panY = 0; zoom = 1;
+  if(!cubes.size){ draw(); return; }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for(const k of cubes.keys()){
+    const [x,y,z] = parseK(k);
+    for(const dx of [0,1]) for(const dy of [0,1]) for(const dz of [0,1]){
+      const p = world(x+dx, y+dy, z+dz);
+      x0 = Math.min(x0,p[0]); x1 = Math.max(x1,p[0]);
+      y0 = Math.min(y0,p[1]); y1 = Math.max(y1,p[1]);
+    }
+  }
+  const r = cv.getBoundingClientRect();
+  zoom = Math.min(3, Math.max(0.3, Math.min((r.width-140)/(x1-x0), (r.height-140)/(y1-y0))));
+  panX = -((x0+x1)/2)*zoom;          // screen centre already sits at (originX, originY)
+  panY = -((y0+y1)/2)*zoom;
+  draw();
+}
+
+cv.addEventListener("mousemove", e => {
+  const r = cv.getBoundingClientRect();
+  if(e.buttons & 6){ panX += e.movementX; panY += e.movementY; draw(); return; }
+  hover = cellAt(e.clientX - r.left, e.clientY - r.top, level);
+  draw();
+});
+cv.addEventListener("mouseleave", () => { hover = null; draw(); });
+cv.addEventListener("mousedown", e => { if(e.button !== 0) e.preventDefault(); });
+cv.addEventListener("contextmenu", e => e.preventDefault());
+cv.addEventListener("click", e => {
+  const r = cv.getBoundingClientRect();
+  const c = cellAt(e.clientX - r.left, e.clientY - r.top, level);
+  if(c) click(c[0], c[1]);
+});
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
+  const f = e.deltaY < 0 ? 1.1 : 1/1.1, nz = Math.min(4, Math.max(0.25, zoom*f));
+  panX = (mx - originX) - ((mx - originX) - panX)*(nz/zoom);   // keep point under cursor fixed
+  panY = (my - originY) - ((my - originY) - panY)*(nz/zoom);
+  zoom = nz;
+  hover = cellAt(mx, my, level);
+  draw();
+}, {passive:false});
+
+addEventListener("keydown", e => {
+  if(/input|select|textarea/i.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if(k >= "1" && k <= String(LEVELS)){ level = +k - 1; syncUI(); draw(); }
+  else if(k === "q"){ camRot = (camRot+3)%4; draw(); }
+  else if(k === "e"){ camRot = (camRot+1)%4; draw(); }
+  else if(k === "b"){ tool = "build"; syncUI(); }
+  else if(k === "x"){ tool = "erase"; syncUI(); }
+  else if(k === "d"){ tool = "entrance"; syncUI(); }
+  else if(k === "z"){ doUndo(); }
+  else if(k === "delete" || k === "backspace"){ if(selected){ const [x,y,z] = parseK(selected); erase(x,y,z); refresh(); } }
+});
+function doUndo(){
+  const s = undoStack.pop();
+  if(!s) return toast("nothing to undo");
+  cubes = new Map(JSON.parse(s)); selected = null; refresh();
+}
+
+document.querySelectorAll(".tool").forEach(b => b.onclick = () => { tool = b.dataset.tool; syncUI(); });
+$("rotL").onclick = () => { camRot = (camRot+3)%4; draw(); };
+$("rotR").onclick = () => { camRot = (camRot+1)%4; draw(); };
+$("fit").onclick = fitView;
+$("undo").onclick = doUndo;
+$("clear").onclick = () => { snapshot(); cubes = new Map(); selected = null; refresh(); };
+$("preset").onchange = e => {
+  const g = PRESETS[e.target.value];
+  if(g){ setCells(g()); refresh(); fitView(); }
+  e.target.value = "";
+};
+$("pooled").onchange = e => { rules.pooled = e.target.checked; refresh(false); };
+$("edge").oninput = e => { edgeIn = parseFloat(e.target.value) || 39; refresh(false); };
+["roofAll","groundFloor","interFloor","support"].forEach(r =>
+  $("r-"+r).onchange = e => { rules[r] = e.target.checked; refresh(); });
+document.querySelectorAll(".card>h2").forEach(h =>
+  h.onclick = () => h.parentElement.classList.toggle("collapsed"));
+
+$("export").onclick = () => {
+  const blob = new Blob([JSON.stringify({cubes:[...cubes], inv, track, rules, edgeIn}, null, 1)],
+                        {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "chicken-trail.json"; a.click();
+};
+$("import").onclick = () => $("file").click();
+$("file").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try{
+      const s = JSON.parse(rd.result);
+      snapshot();
+      cubes = new Map(s.cubes || []);
+      Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
+      Object.assign(rules, s.rules || {}); edgeIn = s.edgeIn || edgeIn;
+      renderInventory(); syncUI(); refresh(); fitView();
+    }catch(err){ toast("could not read that file"); }
+  };
+  rd.readAsText(f);
+};
+$("png").onclick = () => {
+  const a = document.createElement("a");
+  a.href = cv.toDataURL("image/png"); a.download = "chicken-trail.png"; a.click();
+};
+
+function syncUI(){
+  document.querySelectorAll(".tool").forEach(b => b.classList.toggle("on", b.dataset.tool === tool));
+  $("levelBtns").innerHTML = Array.from({length:LEVELS}, (_,i) =>
+    "<button class='sm lvl"+(i===level?" on":"")+"' data-lvl='"+i+"'>"+i+"</button>").join(" ");
+  $("levelBtns").querySelectorAll(".lvl").forEach(b =>
+    b.onclick = () => { level = +b.dataset.lvl; syncUI(); draw(); });
+  $("pooled").checked = rules.pooled;
+  $("edge").value = edgeIn;
+  ["roofAll","groundFloor","interFloor","support"].forEach(r => $("r-"+r).checked = rules[r]);
+}
+
+load();
+renderInventory();
+syncUI();
+addEventListener("resize", resize);
+resize();
+if(!cubes.size){ setCells(PRESETS.L()); undoStack.length = 0; }
+refresh();
+fitView();
+</script>
+</body>
+</html>
