@@ -39,6 +39,7 @@
   input[type=checkbox]{accent-color:var(--acc)}
   table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
   td,th{padding:3px 4px;text-align:right}
+  #invTable td:first-child,#bomTable td:first-child{white-space:nowrap}
   th:first-child,td:first-child{text-align:left}
   th{color:var(--dim);font-weight:500;font-size:11px;border-bottom:1px solid var(--line)}
   tr.short td{color:var(--bad)}
@@ -78,6 +79,7 @@
         <button class="sm" id="fit">Fit view</button>
         <button class="sm" id="undo">Undo</button>
       </div>
+      <div class="row"><input type="checkbox" id="showConn"><label for="showConn">Colour the connectors</label></div>
       <div class="row"><label>Preset</label>
         <select id="preset" style="background:#12151a;color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:4px">
           <option value="">choose…</option>
@@ -91,7 +93,7 @@
         <button class="sm" id="clear">Clear</button>
       </div>
       <div class="hint">Click a cell to place / select. Drag with right or middle mouse to pan, wheel to zoom.
-      Keys: <b>1-4</b> level, <b>q/e</b> rotate, <b>b/x/d</b> tools, <b>z</b> undo.</div>
+      Keys: <b>1-4</b> level, <b>q/e</b> rotate, <b>b/x/d</b> tools, <b>c</b> connectors, <b>z</b> undo.</div>
     </div></div>
 
     <div class="card" id="c-inv"><h2>Parts on hand</h2><div class="body">
@@ -99,8 +101,10 @@
       <div class="sep"></div>
       <div class="row"><input type="checkbox" id="pooled"><label for="pooled">Panels are interchangeable (one pool)</label></div>
       <div class="row"><label>Cube edge</label><input type="number" id="edge" step="0.5"> <span class="pill">inches</span></div>
-      <div class="hint">Untracked parts are still tallied but never limit a build. Set the edge length to match your
-      Anleolife panels (a 1&nbsp;m panel is 39.4&nbsp;in).</div>
+      <div class="row"><label>Connectors per joined edge</label><input type="number" id="cpe" min="1" step="1"></div>
+      <div class="row"><label>Screws per connector</label><input type="number" id="spc" min="0" step="1"></div>
+      <div class="hint">Letters are yours to set &mdash; type the code off your parts bag or manual into the
+      box beside each connector. Untracked parts are still tallied but never limit a build.</div>
     </div></div>
 
     <div class="card" id="c-bom"><h2>Bill of materials</h2><div class="body">
@@ -144,6 +148,12 @@
       <span class="swatch" style="background:#8a6bbf"></span>floor panel<br>
       <span class="swatch" style="background:#e0703a"></span>door / gate<br>
       <span class="swatch" style="background:#3a4450"></span>open passage
+      <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)"><b>Connectors</b></div>
+      <span class="swatch" style="background:#5fb37a"></span><span id="lg-straight">straight</span><br>
+      <span class="swatch" style="background:#e0a33e"></span><span id="lg-out90">outside 90&deg;</span><br>
+      <span class="swatch" style="background:#b06bd9"></span><span id="lg-in90">inside 90&deg;</span><br>
+      <span class="swatch" style="background:#5b9dd9"></span><span id="lg-tee">T joint</span><br>
+      <span class="swatch" style="background:#d9635f"></span><span id="lg-cross">cross</span>
     </div>
     <div id="toast"></div>
   </main>
@@ -164,79 +174,147 @@ const SIDES = [
 ];
 const FACE_MODES = ["auto","wall","open","door"];
 
+// A connector sits on a lattice EDGE and joins the panels that meet along it.
+// Type is fixed by how many panels meet and at what angle - see classifyEdges().
 const PARTS = [
-  {id:"wall",      name:"Side panel",   have:24, track:true},
-  {id:"roof",      name:"Roof panel",   have:12, track:true},
-  {id:"floor",     name:"Floor panel",  have:0,  track:true},
-  {id:"door",      name:"Door / gate",  have:2,  track:true},
-  {id:"connector", name:"Corner connector", have:40, track:false},
-  {id:"bar",       name:"Frame bar",    have:60, track:false},
+  {id:"wall",     group:"Panels",     name:"Side panel",            have:24, track:true},
+  {id:"roof",     group:"Panels",     name:"Roof panel",            have:12, track:true},
+  {id:"floor",    group:"Panels",     name:"Floor panel",           have:0,  track:true},
+  {id:"door",     group:"Panels",     name:"Door / gate",           have:2,  track:true},
+  {id:"straight", group:"Connectors", name:"Straight panel joiner", have:0, track:false, letter:"E"},
+  {id:"out90",    group:"Connectors", name:"Outside 90\u00b0 corner",  have:0, track:false, letter:"D"},
+  {id:"in90",     group:"Connectors", name:"Inside 90\u00b0 corner",   have:0, track:false, letter:"F"},
+  {id:"tee",      group:"Connectors", name:"T joint (3-way)",    have:0, track:false, letter:""},
+  {id:"cross",    group:"Connectors", name:"Cross joint (4-way)",have:0, track:false, letter:""},
+  {id:"screw",    group:"Fasteners",  name:"Screw + wingnut",       have:0, track:false, letter:""},
 ];
+const JOINT_IDS = ["straight","out90","in90","tee","cross"];
+const PANEL_IDS = ["wall","roof","floor"];
+const PANEL_USE = {wall:1, roof:1, floor:1, door:1};
 
 let cubes = new Map();                 // "x,y,z" -> {faces:{}, entrance:bool}
-let inv   = {}, track = {};
+let inv = {}, track = {}, letter = {};
 let rules = {roofAll:true, groundFloor:false, interFloor:true, support:true, pooled:true};
 let edgeIn = 39;                       // cube edge, inches
-let tool = "build", level = 0, selected = null;
+let connPerEdge = 1;                   // connector pieces per joined edge
+let screwsPerConn = 4;                 // screws + wingnuts per connector
+let tool = "build", level = 0, selected = null, showConn = true;
 let camRot = 0, zoom = 1, panX = 0, panY = 0;
 const undoStack = [];
 
-PARTS.forEach(p => { inv[p.id] = p.have; track[p.id] = p.track; });
+PARTS.forEach(p => { inv[p.id] = p.have; track[p.id] = p.track; letter[p.id] = p.letter || ""; });
+const partName = id => { const p = PARTS.find(p => p.id === id); return p ? p.name : id; };
 
-// ---------------------------------------------------------------- bill of materials
-function addLattice(verts, edges, x, y, z){
-  for(let i=0;i<2;i++) for(let j=0;j<2;j++) for(let m=0;m<2;m++) verts.add(K(x+i,y+j,z+m));
-  for(let j=0;j<2;j++) for(let m=0;m<2;m++) edges.add("X"+K(x,y+j,z+m));
-  for(let i=0;i<2;i++) for(let m=0;m<2;m++) edges.add("Y"+K(x+i,y,z+m));
-  for(let i=0;i<2;i++) for(let j=0;j<2;j++) edges.add("Z"+K(x+i,y+j,z));
+// ---------------------------------------------------------------- faces
+// What a single face of one cube resolves to under the current rules.
+function faceUse(map, k, fid){
+  const [x,y,z] = parseK(k), c = map.get(k), f = (c && c.faces) || {};
+  if(fid === "T"){
+    if(map.has(K(x,y,z+1))) return "shared";
+    const m = f.T || "auto";
+    if(m === "open") return "open";
+    if(m === "door") return "door";
+    return rules.roofAll ? "roof" : "open";
+  }
+  if(fid === "B"){
+    const below = map.has(K(x,y,z-1));
+    const m = f.B || "auto";
+    if(m === "door") return "door";
+    if(m === "open") return below ? "shared" : "open";
+    if(z === 0) return rules.groundFloor ? "floor" : "ground";
+    if(below) return rules.interFloor ? "floor" : "shared";
+    return "floor";
+  }
+  const s = SIDES.find(s => s.id === fid);
+  if(map.has(K(x+s.d[0], y+s.d[1], z))) return "shared";
+  const m = f[fid] || "auto";
+  return m === "open" ? "open" : m === "door" ? "door" : "wall";
 }
 
-function computeBOM(map){
-  const r = {wall:0, roof:0, floor:0, door:0, connector:0, bar:0};
-  let openings = 0, shared = 0;
-  const verts = new Set(), edges = new Set();
-  for(const [k,c] of map){
+// Is there panel material in the face whose normal is `axis`, with cell `c` on its + side?
+function facePanel(map, axis, c){
+  const lo = c.slice(); lo[axis] -= 1;
+  const loK = K(lo[0],lo[1],lo[2]), hiK = K(c[0],c[1],c[2]);
+  if(map.has(loK) && PANEL_USE[faceUse(map, loK, ["E","S","T"][axis])]) return true;
+  if(map.has(hiK) && PANEL_USE[faceUse(map, hiK, ["W","N","B"][axis])]) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------- connectors
+// Every lattice edge touched by the build, classified by the panels meeting on it.
+function classifyEdges(map){
+  const edges = new Set();
+  for(const k of map.keys()){
     const [x,y,z] = parseK(k);
-    const f = c.faces || {};
-    for(const s of SIDES){
-      if(map.has(K(x+s.d[0], y+s.d[1], z))){ shared++; continue; }
-      const m = f[s.id] || "auto";
-      if(m === "open") openings++;
-      else if(m === "door") r.door++;
-      else r.wall++;
-    }
-    const above = map.has(K(x,y,z+1)), below = map.has(K(x,y,z-1));
-    const mT = f.T || "auto";
-    if(!above){
-      if(mT === "open") openings++;
-      else if(mT === "door") r.door++;
-      else if(rules.roofAll) r.roof++;
-    } else shared++;
-    const mB = f.B || "auto";
-    if(mB === "door") r.door++;
-    else if(mB === "open"){ if(!below) openings++; }
-    else if(z === 0){ if(rules.groundFloor) r.floor++; }
-    else if(below){ if(rules.interFloor) r.floor++; }
-    else r.floor++;                                  // unsupported cube needs its own floor
-    addLattice(verts, edges, x, y, z);
+    for(let j=0;j<2;j++) for(let m=0;m<2;m++) edges.add("0,"+K(x,   y+j, z+m));
+    for(let i=0;i<2;i++) for(let m=0;m<2;m++) edges.add("1,"+K(x+i, y,   z+m));
+    for(let i=0;i<2;i++) for(let j=0;j<2;j++) edges.add("2,"+K(x+i, y+j, z  ));
   }
-  r.connector = verts.size;
-  r.bar = edges.size;
-  return Object.assign(r, {openings, shared, count:map.size});
+  const sub = (c, ax) => { const q = c.slice(); q[ax] -= 1; return q; };
+  const out = [];
+  for(const e of edges){
+    const [A,px,py,pz] = e.split(",").map(Number);
+    const U = (A+1)%3, V = (A+2)%3, p = [px,py,pz];
+    // panels reaching this edge, in cyclic order +U, +V, -U, -V
+    const d = [facePanel(map,V,p), facePanel(map,U,p),
+               facePanel(map,V,sub(p,U)), facePanel(map,U,sub(p,V))];
+    const n = d.filter(Boolean).length;
+    if(n === 0) continue;
+    let type;
+    if(n === 1) type = "free";
+    else if(n === 4) type = "cross";
+    else if(n === 3) type = "tee";
+    else if((d[0] && d[2]) || (d[1] && d[3])) type = "straight";   // coplanar
+    else {
+      // the two panels are 90 deg apart; the quadrant they bound decides which way it folds
+      const quad = [p, sub(p,U), sub(sub(p,U),V), sub(p,V)];
+      for(let i=0;i<4;i++) if(d[i] && d[(i+1)%4]){
+        const q = quad[i];
+        type = map.has(K(q[0],q[1],q[2])) ? "out90" : "in90";
+        break;
+      }
+    }
+    out.push({type, axis:A, p});
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- bill of materials
+function computeBOM(map){
+  const r = {};
+  PARTS.forEach(p => r[p.id] = 0);
+  let openings = 0, shared = 0;
+  for(const k of map.keys()){
+    for(const fid of ["E","W","S","N","T","B"]){
+      const u = faceUse(map, k, fid);
+      if(PANEL_USE[u]) r[u]++;
+      else if(u === "shared") shared++;
+      else if(u === "open") openings++;
+    }
+  }
+  const edges = classifyEdges(map);
+  const vert = {}, free = {n:0};
+  JOINT_IDS.forEach(j => vert[j] = 0);
+  for(const e of edges){
+    if(e.type === "free"){ free.n++; continue; }
+    r[e.type] += connPerEdge;
+    if(e.axis === 2) vert[e.type] += connPerEdge;
+  }
+  r.screw = JOINT_IDS.reduce((s,j) => s + r[j], 0) * screwsPerConn;
+  return Object.assign(r, {openings, shared:shared/2, count:map.size, edges, vert, freeEdges:free.n});
 }
 
 // parts a build is short of; [] means buildable
 function shortOf(b){
   const out = [];
   if(rules.pooled){
-    const need = b.wall + b.roof + b.floor;
-    const have = ["wall","roof","floor"].reduce((s,p) => s + (track[p] ? inv[p] : 0), 0);
-    const anyTracked = ["wall","roof","floor"].some(p => track[p]);
-    if(anyTracked && need > have) out.push("panels");
+    const need = PANEL_IDS.reduce((s,p) => s + b[p], 0);
+    const have = PANEL_IDS.reduce((s,p) => s + (track[p] ? inv[p] : 0), 0);
+    if(PANEL_IDS.some(p => track[p]) && need > have) out.push("panels");
   } else {
-    for(const p of ["wall","roof","floor"]) if(track[p] && b[p] > inv[p]) out.push(p);
+    for(const p of PANEL_IDS) if(track[p] && b[p] > inv[p]) out.push(p);
   }
-  for(const p of ["door","connector","bar"]) if(track[p] && b[p] > inv[p]) out.push(p);
+  for(const p of ["door", ...JOINT_IDS, "screw"]) if(track[p] && b[p] > inv[p]) out.push(p);
   return out;
 }
 
@@ -386,31 +464,6 @@ function shade(hex, f){
   return "rgb("+r+","+g+","+b+")";
 }
 
-// what part a given face of a given cube uses, under current rules
-function faceUse(k, fid){
-  const [x,y,z] = parseK(k), c = cubes.get(k), f = c.faces || {};
-  if(fid === "T"){
-    if(cubes.has(K(x,y,z+1))) return "shared";
-    const m = f.T || "auto";
-    if(m === "open") return "open";
-    if(m === "door") return "door";
-    return rules.roofAll ? "roof" : "open";
-  }
-  if(fid === "B"){
-    const below = cubes.has(K(x,y,z-1));
-    const m = f.B || "auto";
-    if(m === "door") return "door";
-    if(m === "open") return below ? "shared" : "open";
-    if(z === 0) return rules.groundFloor ? "floor" : "ground";
-    if(below) return rules.interFloor ? "floor" : "shared";
-    return "floor";
-  }
-  const s = SIDES.find(s => s.id === fid);
-  if(cubes.has(K(x+s.d[0], y+s.d[1], z))) return "shared";
-  const m = f[fid] || "auto";
-  return m === "open" ? "open" : m === "door" ? "door" : "wall";
-}
-
 function drawGroundGrid(){
   ctx.lineWidth = 1;
   ctx.strokeStyle = "#252b33";
@@ -436,7 +489,7 @@ function drawCube(k, info){
   for(const fid of ["B","N","W","E","S","T"]){
     const pts = CUBE_FACES[fid].map(v => proj(x+v[0], y+v[1], z+v[2]));
     if(area(pts) <= 0) continue;                       // back face
-    const use = faceUse(k, fid);
+    const use = faceUse(cubes, k, fid);
     if(use === "shared" || use === "ground") continue; // nothing there to draw
     let col = COLOR[use] || COLOR.open;
     const fc = pts.reduce((s,p) => s+p[0], 0)/4;
@@ -482,6 +535,41 @@ function drawCube(k, info){
   }
 }
 
+const JOINT_COLOR = {straight:"#5fb37a", out90:"#e0a33e", in90:"#b06bd9",
+                     tee:"#5b9dd9", cross:"#d9635f"};
+
+// direction from the scene toward the camera, in world coords
+function viewDir(){
+  let a = 1, b = 1;
+  for(let i=0;i<camRot;i++){ const t = a; a = b; b = -t; }
+  return [a, b, 1];
+}
+// an edge is hidden if a cube sits between it and the camera
+function occluded(mid, dir){
+  for(let t=0.6; t<=GRID; t+=1){
+    const c = K(Math.floor(mid[0]+dir[0]*t), Math.floor(mid[1]+dir[1]*t), Math.floor(mid[2]+dir[2]*t));
+    if(cubes.has(c)) return true;
+  }
+  return false;
+}
+function drawConnectors(edges){
+  const dir = viewDir();
+  ctx.lineCap = "round";
+  for(const e of edges){
+    if(e.type === "free") continue;
+    const q = e.p.slice(); q[e.axis] += 1;
+    const mid = [(e.p[0]+q[0])/2, (e.p[1]+q[1])/2, (e.p[2]+q[2])/2];
+    const hidden = occluded(mid, dir);
+    const a = proj(e.p[0], e.p[1], e.p[2]), b = proj(q[0], q[1], q[2]);
+    ctx.strokeStyle = JOINT_COLOR[e.type];
+    ctx.globalAlpha = hidden ? 0.16 : 1;
+    ctx.lineWidth = Math.max(2, 4*zoom);
+    poly([a,b]); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineCap = "butt";
+}
+
 function draw(){
   const r = cv.getBoundingClientRect();
   ctx.clearRect(0,0,r.width,r.height);
@@ -495,6 +583,7 @@ function draw(){
     return (ax+ay) - (bx+by) || A[2] - B[2];
   });
   for(const k of list) drawCube(k, info);
+  if(showConn) drawConnectors(classifyEdges(cubes));
 
   if(hover){
     const [x,y] = hover;
@@ -596,51 +685,73 @@ const PRESETS = {
 const $ = id => document.getElementById(id);
 
 function renderInventory(){
+  const rows = [];
+  let group = null;
+  for(const p of PARTS){
+    if(p.group !== group){ group = p.group;
+      rows.push("<tr><th colspan='4' style='padding-top:7px'>"+group+"</th></tr>"); }
+    const isJoint = JOINT_IDS.includes(p.id);
+    rows.push("<tr><td>"+
+      (isJoint ? "<input type='text' maxlength='3' data-letter='"+p.id+"' value='"+letter[p.id]+
+                 "' style='width:30px;text-align:center;background:#12151a;color:var(--acc);border:1px solid var(--line);border-radius:3px;padding:2px;font:inherit;font-weight:600'> " : "")+
+      p.name+"</td>"+
+      "<td><input type='number' min='0' data-inv='"+p.id+"' value='"+inv[p.id]+"'></td>"+
+      "<td><input type='checkbox' data-track='"+p.id+"' "+(track[p.id]?"checked":"")+"></td></tr>");
+  }
   const t = $("invTable");
-  t.innerHTML = "<tr><th>Part</th><th>Have</th><th>Track</th></tr>" + PARTS.map(p =>
-    "<tr><td>"+p.name+"</td><td><input type='number' min='0' data-inv='"+p.id+"' value='"+inv[p.id]+"'></td>"+
-    "<td><input type='checkbox' data-track='"+p.id+"' "+(track[p.id]?"checked":"")+"></td></tr>").join("");
+  t.innerHTML = "<tr><th>Part</th><th>Have</th><th>Track</th></tr>" + rows.join("");
   t.querySelectorAll("[data-inv]").forEach(el => el.oninput = () => {
     inv[el.dataset.inv] = Math.max(0, parseInt(el.value)||0); refresh(false);
   });
   t.querySelectorAll("[data-track]").forEach(el => el.onchange = () => {
     track[el.dataset.track] = el.checked; refresh(false);
   });
+  t.querySelectorAll("[data-letter]").forEach(el => el.oninput = () => {
+    letter[el.dataset.letter] = el.value.toUpperCase();
+    el.value = letter[el.dataset.letter];
+    renderBOM(); syncUI(); save();
+  });
 }
+
+function tag(id){ return letter[id] ? "<b style='color:var(--acc)'>"+letter[id]+"</b> " : ""; }
 
 function renderBOM(){
   const b = computeBOM(cubes);
   const rows = [];
-  const line = (name, need, have, tracked) => {
-    const spare = have - need;
-    const cls = tracked && spare < 0 ? "short" : "ok";
-    rows.push("<tr class='"+cls+"'><td>"+name+"</td><td class='num'>"+need+"</td>"+
-      "<td class='num'>"+(tracked ? have : "—")+"</td>"+
+  const line = (name, need, have, tracked, sub) => {
+    const spare = have - need, cls = tracked && spare < 0 ? "short" : "ok";
+    rows.push("<tr class='"+cls+"'><td"+(sub?" style='padding-left:12px;color:var(--dim)'":"")+">"+name+"</td>"+
+      "<td class='num'>"+need+"</td><td class='num'>"+(tracked ? have : "\u2014")+"</td>"+
       "<td class='num spare'>"+(tracked ? (spare >= 0 ? "+"+spare : spare) : "")+"</td></tr>");
   };
+  const head = t => rows.push("<tr><th colspan='4' style='padding-top:7px'>"+t+"</th></tr>");
+
+  head("Panels");
   if(rules.pooled){
-    const need = b.wall + b.roof + b.floor;
-    const have = ["wall","roof","floor"].reduce((s,p) => s + inv[p], 0);
-    const tr = ["wall","roof","floor"].some(p => track[p]);
-    line("Panels (pooled)", need, have, tr);
-    rows.push("<tr><td style='padding-left:12px;color:var(--dim)'>&bull; sides</td><td class='num'>"+b.wall+"</td><td></td><td></td></tr>");
-    rows.push("<tr><td style='padding-left:12px;color:var(--dim)'>&bull; roofs</td><td class='num'>"+b.roof+"</td><td></td><td></td></tr>");
-    rows.push("<tr><td style='padding-left:12px;color:var(--dim)'>&bull; floors</td><td class='num'>"+b.floor+"</td><td></td><td></td></tr>");
+    const need = PANEL_IDS.reduce((s,p) => s + b[p], 0);
+    const have = PANEL_IDS.reduce((s,p) => s + inv[p], 0);
+    line("Pooled panels", need, have, PANEL_IDS.some(p => track[p]));
+    PANEL_IDS.forEach(p => line("\u2022 "+partName(p), b[p], 0, false, true));
   } else {
-    line("Side panels", b.wall, inv.wall, track.wall);
-    line("Roof panels", b.roof, inv.roof, track.roof);
-    line("Floor panels", b.floor, inv.floor, track.floor);
+    PANEL_IDS.forEach(p => line(partName(p), b[p], inv[p], track[p]));
   }
-  line("Door / gate", b.door, inv.door, track.door);
-  line("Corner connectors", b.connector, inv.connector, track.connector);
-  line("Frame bars", b.bar, inv.bar, track.bar);
+  line(partName("door"), b.door, inv.door, track.door);
+
+  head("Connectors");
+  JOINT_IDS.forEach(j => line(tag(j)+partName(j), b[j], inv[j], track[j]));
+  head("Fasteners");
+  line(partName("screw"), b.screw, inv.screw, track.screw);
+
   $("bomTable").innerHTML = "<tr><th>Part</th><th>Need</th><th>Have</th><th>Spare</th></tr>" + rows.join("");
 
   const miss = shortOf(b);
+  const vert = JOINT_IDS.reduce((s,j) => s + b.vert[j], 0);
   $("bomNote").innerHTML = b.count === 0 ? "Place cubes to see the parts needed."
-    : miss.length ? "<b style='color:var(--bad)'>Short on "+miss.join(", ")+".</b> Shown in red above."
-    : "<b style='color:var(--good)'>Buildable with the parts you have.</b> "+
-      b.shared+" shared faces saved you "+b.shared+" panels.";
+    : (miss.length ? "<b style='color:var(--bad)'>Short on "+miss.map(m => m === "panels" ? "panels" : partName(m)).join(", ")+
+        ".</b><br>" : "<b style='color:var(--good)'>Buildable with the parts you have.</b><br>")
+      + b.shared+" shared faces save "+b.shared+" panels. "
+      + vert+" of the connectors run vertically, "+(JOINT_IDS.reduce((s,j)=>s+b[j],0)-vert)+" horizontally. "
+      + b.freeEdges+" panel edges have nothing to join to.";
 }
 
 function renderStats(){
@@ -654,6 +765,8 @@ function renderStats(){
     ["Dead ends", a.deadEnds],
     ["Junctions", a.junctions],
     ["Open passages", b.shared],
+    ["Connector joints", JOINT_IDS.reduce((s,j) => s + b[j], 0)],
+    ["Unjoined panel edges", b.freeEdges],
     ["Reachable from door", a.reached ? a.reached+" / "+b.count : "no door set"],
   ];
   $("statTable").innerHTML = rows.map(r =>
@@ -661,8 +774,7 @@ function renderStats(){
 }
 
 function renderCapability(){
-  const label = {panels:"panels", wall:"side panels", roof:"roof panels", floor:"floor panels",
-                 door:"doors", connector:"connectors", bar:"frame bars"};
+  const label = id => id === "panels" ? "panels" : (letter[id] ? letter[id]+" \u2013 " : "")+partName(id);
   $("capTable").innerHTML = "<tr><th>Shape</th><th>Max</th><th>Limited by</th></tr>" +
     capability().map(c =>
       "<tr><td>"+c.name+"</td><td class='num'>"+c.cubes+"</td><td style='color:var(--dim)'>"+
@@ -682,7 +794,7 @@ function renderSelection(){
     (c.entrance ? "<span class='pill' style='color:var(--acc)'>coop door</span>" : "")+"</div>"+
     "<div class='grid2'>"+ faces.map(([id,name]) => {
       const mode = (c.faces||{})[id] || "auto";
-      const use = faceUse(selected, id);
+      const use = faceUse(cubes, selected, id);
       const col = COLOR[use] || "#3a4450";
       return "<button class='sm facebtn' data-face='"+id+"'><span>"+name+"</span>"+
         "<span style='color:var(--dim)'><span class='swatch' style='background:"+col+"'></span>"+
@@ -714,7 +826,7 @@ function refresh(redraw = true){
 const STORE = "chicken-trail-v1";
 function save(){
   try{
-    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, rules, edgeIn}));
+    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, connPerEdge, screwsPerConn, showConn}));
   }catch(e){}
 }
 function load(){
@@ -723,7 +835,11 @@ function load(){
     if(!s) return;
     cubes = new Map(s.cubes || []);
     Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
-    Object.assign(rules, s.rules || {}); edgeIn = s.edgeIn || edgeIn;
+    Object.assign(letter, s.letter || {}); Object.assign(rules, s.rules || {});
+    edgeIn = s.edgeIn || edgeIn;
+    connPerEdge = s.connPerEdge || connPerEdge;
+    screwsPerConn = s.screwsPerConn == null ? screwsPerConn : s.screwsPerConn;
+    if(s.showConn != null) showConn = s.showConn;
   }catch(e){}
 }
 
@@ -781,6 +897,7 @@ addEventListener("keydown", e => {
   else if(k === "b"){ tool = "build"; syncUI(); }
   else if(k === "x"){ tool = "erase"; syncUI(); }
   else if(k === "d"){ tool = "entrance"; syncUI(); }
+  else if(k === "c"){ showConn = !showConn; syncUI(); draw(); }
   else if(k === "z"){ doUndo(); }
   else if(k === "delete" || k === "backspace"){ if(selected){ const [x,y,z] = parseK(selected); erase(x,y,z); refresh(); } }
 });
@@ -803,13 +920,16 @@ $("preset").onchange = e => {
 };
 $("pooled").onchange = e => { rules.pooled = e.target.checked; refresh(false); };
 $("edge").oninput = e => { edgeIn = parseFloat(e.target.value) || 39; refresh(false); };
+$("cpe").oninput = e => { connPerEdge = Math.max(1, parseInt(e.target.value)||1); refresh(false); };
+$("spc").oninput = e => { screwsPerConn = Math.max(0, parseInt(e.target.value)||0); refresh(false); };
+$("showConn").onchange = e => { showConn = e.target.checked; draw(); save(); };
 ["roofAll","groundFloor","interFloor","support"].forEach(r =>
   $("r-"+r).onchange = e => { rules[r] = e.target.checked; refresh(); });
 document.querySelectorAll(".card>h2").forEach(h =>
   h.onclick = () => h.parentElement.classList.toggle("collapsed"));
 
 $("export").onclick = () => {
-  const blob = new Blob([JSON.stringify({cubes:[...cubes], inv, track, rules, edgeIn}, null, 1)],
+  const blob = new Blob([JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, connPerEdge, screwsPerConn}, null, 1)],
                         {type:"application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "chicken-trail.json"; a.click();
@@ -824,7 +944,10 @@ $("file").onchange = e => {
       snapshot();
       cubes = new Map(s.cubes || []);
       Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
-      Object.assign(rules, s.rules || {}); edgeIn = s.edgeIn || edgeIn;
+      Object.assign(letter, s.letter || {}); Object.assign(rules, s.rules || {});
+      edgeIn = s.edgeIn || edgeIn;
+      connPerEdge = s.connPerEdge || connPerEdge;
+      screwsPerConn = s.screwsPerConn == null ? screwsPerConn : s.screwsPerConn;
       renderInventory(); syncUI(); refresh(); fitView();
     }catch(err){ toast("could not read that file"); }
   };
@@ -843,6 +966,11 @@ function syncUI(){
     b.onclick = () => { level = +b.dataset.lvl; syncUI(); draw(); });
   $("pooled").checked = rules.pooled;
   $("edge").value = edgeIn;
+  $("cpe").value = connPerEdge;
+  $("spc").value = screwsPerConn;
+  $("showConn").checked = showConn;
+  JOINT_IDS.forEach(j => { const el = $("lg-"+j); if(el)
+    el.textContent = (letter[j] ? letter[j]+" \u2013 " : "") + partName(j).replace(/ \(.*\)/,""); });
   ["roofAll","groundFloor","interFloor","support"].forEach(r => $("r-"+r).checked = rules[r]);
 }
 

@@ -15,7 +15,29 @@ Panels are counted per cube face:
 - an open top uses a **roof panel** (rule: *Roof every open top*)
 - ground-level bottoms are bare soil unless *Floor panels at ground level* is on
 - a boundary between stacked levels uses a **floor panel** unless that rule is off
-- **corner connectors** = unique lattice vertices, **frame bars** = unique lattice edges
+### Connectors
+
+Connectors sit on **edges**, not corners, and the type is forced by the geometry: for every
+lattice edge the tool counts the panels reaching it and the angle between them.
+
+| Panels on the edge | Connector |
+|---|---|
+| 2, coplanar | straight joiner (default letter **E**) |
+| 2, at 90 deg, enclosing a cube | outside 90 deg (**D**) |
+| 2, at 90 deg, enclosing empty space | inside 90 deg (**F**) |
+| 3 | T joint |
+| 4 | cross joint |
+| 1 | free edge - nothing to join to |
+
+So a plain box needs 8 outside corners and 4 free bottom edges; adding a floor makes all 12
+outside corners; an L-shaped trail produces exactly one inside corner at the re-entrant turn;
+a courtyard loop produces four. Stacking levels with a floor between them produces T joints
+around the floor's perimeter.
+
+The letters are editable - type the codes off your own parts bags into the boxes in
+*Parts on hand*, and they follow through to the bill of materials and the legend.
+Two multipliers sit under the parts list: **connectors per joined edge** (if a single edge
+takes more than one piece) and **screws per connector**, which drives the fastener total.
 
 Any single face can be overridden in the *Selected cube* card:
 `auto -> wall -> open -> door`.
