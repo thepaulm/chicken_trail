@@ -70,16 +70,18 @@
       <div class="row">
         <button class="tool on" data-tool="build">Build</button>
         <button class="tool" data-tool="erase">Erase</button>
+        <button class="tool" data-tool="select">Select</button>
         <button class="tool" data-tool="entrance">Coop door</button>
       </div>
       <div class="row"><label>Level</label><span id="levelBtns"></span></div>
       <div class="row">
-        <button class="sm" id="rotL">Rotate &larr;</button>
-        <button class="sm" id="rotR">Rotate &rarr;</button>
-        <button class="sm" id="fit">Fit view</button>
+        <button class="sm" id="rotL">Orbit &larr;</button>
+        <button class="sm" id="rotR">Orbit &rarr;</button>
+        <button class="sm" id="fit">Frame all</button>
         <button class="sm" id="undo">Undo</button>
       </div>
-      <div class="row"><input type="checkbox" id="showConn"><label for="showConn">Colour the connectors</label></div>
+      <div class="row"><input type="checkbox" id="showConn"><label for="showConn">Colour the connectors</label>
+        <input type="checkbox" id="hideRoof"><label for="hideRoof">Roof off</label></div>
       <div class="row"><label>Preset</label>
         <select id="preset" style="background:#12151a;color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:4px">
           <option value="">choose…</option>
@@ -92,8 +94,10 @@
         </select>
         <button class="sm" id="clear">Clear</button>
       </div>
-      <div class="hint">Click a cell to place / select. Drag with right or middle mouse to pan, wheel to zoom.
-      Keys: <b>1-4</b> level, <b>q/e</b> rotate, <b>b/x/d</b> tools, <b>c</b> connectors, <b>z</b> undo.</div>
+      <div class="hint">Click a cube face to add the next cube against it, or click the ground to start one.
+      Drag to orbit, right-drag to pan, wheel to zoom. Shift-click inspects a cube.
+      Keys: <b>1-4</b> ground level, <b>q/e</b> orbit, <b>f</b> frame all, <b>b/x/s/d</b> tools,
+      <b>c</b> connectors, <b>h</b> roof, <b>z</b> undo.</div>
     </div></div>
 
     <div class="card" id="c-inv"><h2>Parts on hand</h2><div class="body">
@@ -103,7 +107,8 @@
       <div class="row"><label>Cube edge</label><input type="number" id="edge" step="0.5"> <span class="pill">inches</span></div>
       <div class="row"><label>Connectors per joined edge</label><input type="number" id="cpe" min="1" step="1"></div>
       <div class="row"><label>Screws per connector</label><input type="number" id="spc" min="0" step="1"></div>
-      <div class="hint">Letters are yours to set &mdash; type the code off your parts bag or manual into the
+      <div class="hint">Only the vertical side connectors are tracked; roof and floor joiners are
+      counted in <i>This design</i> but never limit a build. Letters are yours to set &mdash; type the code off your parts bag or manual into the
       box beside each connector. Untracked parts are still tallied but never limit a build.</div>
     </div></div>
 
@@ -142,18 +147,18 @@
     <canvas id="cv"></canvas>
     <div id="hud"></div>
     <div id="legend">
-      <b>Legend</b><br>
-      <span class="swatch" style="background:#c9a227"></span>wall panel<br>
-      <span class="swatch" style="background:#7aa7d9"></span>roof panel<br>
-      <span class="swatch" style="background:#8a6bbf"></span>floor panel<br>
-      <span class="swatch" style="background:#e0703a"></span>door / gate<br>
-      <span class="swatch" style="background:#3a4450"></span>open passage
-      <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)"><b>Connectors</b></div>
+      <b>Panels</b><br>
+      <span class="swatch" style="background:#c9a227"></span>side<br>
+      <span class="swatch" style="background:#7aa7d9"></span>roof<br>
+      <span class="swatch" style="background:#8a6bbf"></span>floor<br>
+      <span class="swatch" style="background:#e0703a"></span>door / gate
+      <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--line)"><b>Side connectors</b></div>
       <span class="swatch" style="background:#5fb37a"></span><span id="lg-straight">straight</span><br>
       <span class="swatch" style="background:#e0a33e"></span><span id="lg-out90">outside 90&deg;</span><br>
       <span class="swatch" style="background:#b06bd9"></span><span id="lg-in90">inside 90&deg;</span><br>
       <span class="swatch" style="background:#5b9dd9"></span><span id="lg-tee">T joint</span><br>
-      <span class="swatch" style="background:#d9635f"></span><span id="lg-cross">cross</span>
+      <span class="swatch" style="background:#d9635f"></span><span id="lg-cross">cross</span><br>
+      <span class="swatch" style="background:#78838f"></span>roof / floor joiner
     </div>
     <div id="toast"></div>
   </main>
@@ -181,11 +186,11 @@ const PARTS = [
   {id:"roof",     group:"Panels",     name:"Roof panel",            have:12, track:true},
   {id:"floor",    group:"Panels",     name:"Floor panel",           have:0,  track:true},
   {id:"door",     group:"Panels",     name:"Door / gate",           have:2,  track:true},
-  {id:"straight", group:"Connectors", name:"Straight panel joiner", have:0, track:false, letter:"E"},
-  {id:"out90",    group:"Connectors", name:"Outside 90\u00b0 corner",  have:0, track:false, letter:"D"},
-  {id:"in90",     group:"Connectors", name:"Inside 90\u00b0 corner",   have:0, track:false, letter:"F"},
-  {id:"tee",      group:"Connectors", name:"T joint (3-way)",    have:0, track:false, letter:""},
-  {id:"cross",    group:"Connectors", name:"Cross joint (4-way)",have:0, track:false, letter:""},
+  {id:"straight", group:"Side connectors", name:"Straight joiner", have:0, track:false, letter:"E"},
+  {id:"out90",    group:"Side connectors", name:"Outside 90\u00b0 corner",  have:0, track:false, letter:"D"},
+  {id:"in90",     group:"Side connectors", name:"Inside 90\u00b0 corner",   have:0, track:false, letter:"F"},
+  {id:"tee",      group:"Side connectors", name:"T joint (3-way)",    have:0, track:false, letter:""},
+  {id:"cross",    group:"Side connectors", name:"Cross joint (4-way)",have:0, track:false, letter:""},
   {id:"screw",    group:"Fasteners",  name:"Screw + wingnut",       have:0, track:false, letter:""},
 ];
 const JOINT_IDS = ["straight","out90","in90","tee","cross"];
@@ -198,8 +203,7 @@ let rules = {roofAll:true, groundFloor:false, interFloor:true, support:true, poo
 let edgeIn = 39;                       // cube edge, inches
 let connPerEdge = 1;                   // connector pieces per joined edge
 let screwsPerConn = 4;                 // screws + wingnuts per connector
-let tool = "build", level = 0, selected = null, showConn = true;
-let camRot = 0, zoom = 1, panX = 0, panY = 0;
+let tool = "build", level = 0, selected = null, showConn = true, hideRoof = false;
 const undoStack = [];
 
 PARTS.forEach(p => { inv[p.id] = p.have; track[p.id] = p.track; letter[p.id] = p.letter || ""; });
@@ -292,16 +296,16 @@ function computeBOM(map){
       else if(u === "open") openings++;
     }
   }
+  // Only the vertical (side) edges are tracked - roof and floor joiners are assumed on hand.
   const edges = classifyEdges(map);
-  const vert = {}, free = {n:0};
-  JOINT_IDS.forEach(j => vert[j] = 0);
+  let horiz = 0, freeEdges = 0;
   for(const e of edges){
-    if(e.type === "free"){ free.n++; continue; }
-    r[e.type] += connPerEdge;
-    if(e.axis === 2) vert[e.type] += connPerEdge;
+    if(e.type === "free"){ freeEdges++; continue; }
+    if(e.axis === 2) r[e.type] += connPerEdge;
+    else horiz++;
   }
   r.screw = JOINT_IDS.reduce((s,j) => s + r[j], 0) * screwsPerConn;
-  return Object.assign(r, {openings, shared:shared/2, count:map.size, edges, vert, freeEdges:free.n});
+  return Object.assign(r, {openings, shared:shared/2, count:map.size, edges, horiz, freeEdges});
 }
 
 // parts a build is short of; [] means buildable
@@ -398,227 +402,300 @@ function analyse(){
           reached: entrance ? dist.size : 0};
 }
 
-// ---------------------------------------------------------------- isometric projection
-const TW = 64, TH = 32, TZ = 46;          // tile width, tile height, cube height in px
-const C = (GRID-1)/2;
-let originX = 0, originY = 0;
+// ---------------------------------------------------------------- webgl renderer
+const cv = document.getElementById("cv");
+const glOpts = {antialias:true, preserveDrawingBuffer:true, alpha:false};
+const gl = cv.getContext("webgl2", glOpts) || cv.getContext("webgl", glOpts);
+if(!gl) document.getElementById("stage").insertAdjacentHTML("beforeend",
+  "<div style='position:absolute;inset:0;display:grid;place-items:center;color:var(--bad)'>This browser has no WebGL.</div>");
 
-function rotXY(fx, fy){
-  let dx = fx - C - 0.5, dy = fy - C - 0.5;      // centre of grid at origin
-  for(let i=0;i<camRot;i++){ const t = dx; dx = -dy; dy = t; }
-  return [dx, dy];
+const FOV = 0.9, UP = [0,0,1], BG = [0.082,0.094,0.11];
+const cam = {az:-2.2, el:0.62, r:26, target:[GRID/2, GRID/2, 1]};
+let hover = null, meshDirty = true;
+
+// ---- vector / matrix helpers
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const scale=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const norm=a=>{ const l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; };
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+function perspective(fov, aspect, near, far){
+  const f = 1/Math.tan(fov/2), nf = 1/(near-far), m = new Float32Array(16);
+  m[0]=f/aspect; m[5]=f; m[10]=(far+near)*nf; m[11]=-1; m[14]=2*far*near*nf;
+  return m;
 }
-function unrotXY(dx, dy){
-  for(let i=0;i<camRot;i++){ const t = dx; dx = dy; dy = -t; }
-  return [dx + C + 0.5, dy + C + 0.5];
+function lookAt(eye, ctr, up){
+  const z = norm(sub(eye,ctr)), x = norm(cross(up,z)), y = cross(z,x), m = new Float32Array(16);
+  m[0]=x[0]; m[1]=y[0]; m[2]=z[0];
+  m[4]=x[1]; m[5]=y[1]; m[6]=z[1];
+  m[8]=x[2]; m[9]=y[2]; m[10]=z[2];
+  m[12]=-dot(x,eye); m[13]=-dot(y,eye); m[14]=-dot(z,eye); m[15]=1;
+  return m;
 }
-function world(fx, fy, fz){                 // unscaled isometric coords
-  const [a,b] = rotXY(fx, fy);
-  return [(a-b)*TW/2, (a+b)*TH/2 - fz*TZ];
+function mul(a,b){
+  const o = new Float32Array(16);
+  for(let i=0;i<4;i++) for(let j=0;j<4;j++){
+    let s = 0;
+    for(let k=0;k<4;k++) s += a[k*4+j]*b[i*4+k];
+    o[i*4+j] = s;
+  }
+  return o;
 }
-function proj(fx, fy, fz){
-  const w = world(fx, fy, fz);
-  return [originX + panX + w[0]*zoom, originY + panY + w[1]*zoom];
-}
-function unproj(sx, sy, fz){
-  const u = (sx - originX - panX)/zoom, v = (sy - originY - panY)/zoom + fz*TZ;
-  const a = u/TW + v/TH, b = v/TH - u/TW;
-  return unrotXY(a, b);
-}
-function cellAt(sx, sy, z){
-  const [fx, fy] = unproj(sx, sy, z);
-  const x = Math.floor(fx), y = Math.floor(fy);
-  return (x>=0 && y>=0 && x<GRID && y<GRID) ? [x,y] : null;
+const eyePos = () => add(cam.target, [cam.r*Math.cos(cam.el)*Math.cos(cam.az),
+                                      cam.r*Math.cos(cam.el)*Math.sin(cam.az),
+                                      cam.r*Math.sin(cam.el)]);
+function camBasis(){
+  const fwd = norm(sub(cam.target, eyePos()));
+  const right = norm(cross(fwd, UP));
+  return {fwd, right, upv: cross(right, fwd)};
 }
 
-// ---------------------------------------------------------------- drawing
-const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
-let hover = null;
+// ---- shaders
+const VS = `
+attribute vec3 aPos; attribute vec3 aNrm; attribute vec3 aCol;
+attribute vec2 aUV;  attribute float aFlag;
+uniform mat4 uMVP;
+varying vec3 vNrm; varying vec3 vCol; varying vec2 vUV; varying float vFlag;
+void main(){ vNrm=aNrm; vCol=aCol; vUV=aUV; vFlag=aFlag; gl_Position = uMVP*vec4(aPos,1.0); }`;
+const FS = `
+precision mediump float;
+varying vec3 vNrm; varying vec3 vCol; varying vec2 vUV; varying float vFlag;
+uniform vec3 uLight; uniform float uUnlit; uniform float uAlpha;
+void main(){
+  if(vFlag > 0.5){                       // wire-mesh panel: keep the frame and the wires, drop the holes
+    vec2 f = fract(vUV*6.0);
+    vec2 d = min(f, 1.0-f);
+    if(min(d.x,d.y) > 0.11 && min(min(vUV.x,1.0-vUV.x), min(vUV.y,1.0-vUV.y)) > 0.045) discard;
+  }
+  vec3 n = normalize(vNrm);
+  if(!gl_FrontFacing) n = -n;
+  float dif = max(dot(n, normalize(uLight)), 0.0);
+  gl_FragColor = vec4(mix(vCol*(0.40+0.60*dif), vCol, uUnlit), uAlpha);
+}`;
+function shader(type, src){
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(sh));
+  return sh;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+const A = {}, U = {};
+["aPos","aNrm","aCol","aUV","aFlag"].forEach(n => A[n] = gl.getAttribLocation(prog, n));
+["uMVP","uLight","uUnlit","uAlpha"].forEach(n => U[n] = gl.getUniformLocation(prog, n));
 
+// ---- geometry (pos3, nrm3, col3, uv2, flag1)
+const STRIDE = 12*4;
+const hex = h => [parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255];
+const COLOR = {wall:hex("#c9a227"), roof:hex("#7aa7d9"), floor:hex("#8a6bbf"), door:hex("#e0703a")};
+const JOINT_COLOR = {straight:hex("#5fb37a"), out90:hex("#e0a33e"), in90:hex("#b06bd9"),
+                     tee:hex("#5b9dd9"), cross:hex("#d9635f")};
+const STEEL = hex("#78838f");
 const CUBE_FACES = {
-  T: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
-  B: [[0,0,0],[0,1,0],[1,1,0],[1,0,0]],
-  E: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]],
-  W: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]],
-  S: [[0,1,0],[0,1,1],[1,1,1],[1,1,0]],
-  N: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]],
+  T: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]], B: [[0,0,0],[0,1,0],[1,1,0],[1,0,0]],
+  E: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]], W: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]],
+  S: [[0,1,0],[0,1,1],[1,1,1],[1,1,0]], N: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]],
 };
-const COLOR = {wall:"#c9a227", roof:"#7aa7d9", floor:"#8a6bbf", door:"#e0703a", open:"#3a4450"};
+const FACE_N = {T:[0,0,1], B:[0,0,-1], E:[1,0,0], W:[-1,0,0], S:[0,1,0], N:[0,-1,0]};
+const UVQ = [[0,0],[1,0],[1,1],[0,1]];
+
+function pushQuad(out, p, n, col, flag){
+  for(const i of [0,1,2, 0,2,3])
+    out.push(p[i][0],p[i][1],p[i][2], n[0],n[1],n[2], col[0],col[1],col[2], UVQ[i][0],UVQ[i][1], flag);
+}
+function pushBox(out, lo, hi, col, flag){
+  const c = (i,j,k) => [i?hi[0]:lo[0], j?hi[1]:lo[1], k?hi[2]:lo[2]];
+  for(const f of ["T","B","E","W","S","N"])
+    pushQuad(out, CUBE_FACES[f].map(v => c(v[0],v[1],v[2])), FACE_N[f], col, flag);
+}
+function pushLine(out, a, b, col){
+  for(const p of [a,b]) out.push(p[0],p[1],p[2], 0,0,1, col[0],col[1],col[2], 0,0, 0);
+}
+function upload(arr, buf){
+  const b = buf || gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, b);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW);
+  return {buf:b, n:arr.length/12};
+}
+function drawBuf(o, mode){
+  if(!o || !o.n) return;
+  gl.bindBuffer(gl.ARRAY_BUFFER, o.buf);
+  gl.vertexAttribPointer(A.aPos,3,gl.FLOAT,false,STRIDE,0);
+  gl.vertexAttribPointer(A.aNrm,3,gl.FLOAT,false,STRIDE,12);
+  gl.vertexAttribPointer(A.aCol,3,gl.FLOAT,false,STRIDE,24);
+  gl.vertexAttribPointer(A.aUV ,2,gl.FLOAT,false,STRIDE,36);
+  gl.vertexAttribPointer(A.aFlag,1,gl.FLOAT,false,STRIDE,44);
+  Object.values(A).forEach(a => a >= 0 && gl.enableVertexAttribArray(a));
+  gl.drawArrays(mode, 0, o.n);
+}
+
+let meshBuf = null, gridBuf = null, lineBuf = null, ghostBuf = null;
+const BEAM = 0.055;                       // half-thickness of a connector, in cube edges
+
+function rebuild(){
+  const tri = [];
+  for(const k of cubes.keys()){
+    const [x,y,z] = parseK(k);
+    for(const fid of ["T","B","E","W","S","N"]){
+      const u = faceUse(cubes, k, fid);
+      if(!PANEL_USE[u]) continue;
+      if(hideRoof && fid === "T") continue;          // view only - still counted in the BOM
+      pushQuad(tri, CUBE_FACES[fid].map(v => [x+v[0], y+v[1], z+v[2]]), FACE_N[fid], COLOR[u], 1);
+    }
+  }
+  if(showConn) for(const e of classifyEdges(cubes)){
+    if(e.type === "free") continue;
+    const side = e.axis === 2;                       // tracked side connector vs roof / floor joiner
+    const t = side ? BEAM : BEAM*0.55;
+    const lo = e.p.slice(), hi = e.p.slice();
+    for(let i=0;i<3;i++){
+      if(i === e.axis){ hi[i] += 1; } else { lo[i] -= t; hi[i] += t; }
+    }
+    pushBox(tri, lo, hi, side ? JOINT_COLOR[e.type] : STEEL, 0);
+  }
+  meshBuf = upload(tri, meshBuf && meshBuf.buf);
+
+  const grid = [], g1 = [0.16,0.18,0.21], g2 = [0.35,0.27,0.13];
+  for(let i=0;i<=GRID;i++){
+    pushLine(grid, [i,0,0], [i,GRID,0], g1);
+    pushLine(grid, [0,i,0], [GRID,i,0], g1);
+  }
+  if(level > 0) for(let i=0;i<=GRID;i+=2){
+    pushLine(grid, [i,0,level], [i,GRID,level], g2);
+    pushLine(grid, [0,i,level], [GRID,i,level], g2);
+  }
+  gridBuf = upload(grid, gridBuf && gridBuf.buf);
+}
 
 function resize(){
-  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
-  cv.width = r.width*dpr; cv.height = r.height*dpr;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  originX = r.width/2; originY = r.height/2;
+  const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio||1, 2);
+  cv.width = Math.max(1, r.width*dpr|0); cv.height = Math.max(1, r.height*dpr|0);
   draw();
-}
-function poly(pts){ ctx.beginPath(); pts.forEach((p,i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1])); ctx.closePath(); }
-function area(pts){
-  let a = 0;
-  for(let i=0;i<pts.length;i++){ const p = pts[i], q = pts[(i+1)%pts.length]; a += p[0]*q[1] - q[0]*p[1]; }
-  return a/2;
-}
-function shade(hex, f){
-  const n = parseInt(hex.slice(1),16);
-  const r = Math.min(255,(n>>16)*f)|0, g = Math.min(255,((n>>8)&255)*f)|0, b = Math.min(255,(n&255)*f)|0;
-  return "rgb("+r+","+g+","+b+")";
-}
-
-function drawGroundGrid(){
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "#252b33";
-  for(let i=0;i<=GRID;i++){
-    let p = proj(i,0,0), q = proj(i,GRID,0);
-    poly([p,q]); ctx.stroke();
-    p = proj(0,i,0); q = proj(GRID,i,0);
-    poly([p,q]); ctx.stroke();
-  }
-  // level plane marker
-  if(level > 0){
-    ctx.strokeStyle = "rgba(224,163,62,.12)";
-    for(let i=0;i<=GRID;i+=4){
-      let p = proj(i,0,level), q = proj(i,GRID,level); poly([p,q]); ctx.stroke();
-      p = proj(0,i,level); q = proj(GRID,i,level); poly([p,q]); ctx.stroke();
-    }
-  }
-}
-
-function drawCube(k, info){
-  const [x,y,z] = parseK(k), c = cubes.get(k);
-  const ctr = proj(x+0.5, y+0.5, z+0.5);
-  for(const fid of ["B","N","W","E","S","T"]){
-    const pts = CUBE_FACES[fid].map(v => proj(x+v[0], y+v[1], z+v[2]));
-    if(area(pts) <= 0) continue;                       // back face
-    const use = faceUse(cubes, k, fid);
-    if(use === "shared" || use === "ground") continue; // nothing there to draw
-    let col = COLOR[use] || COLOR.open;
-    const fc = pts.reduce((s,p) => s+p[0], 0)/4;
-    const lit = fid === "T" ? 1.0 : (fc > ctr[0] ? 0.74 : 0.55);
-    if(use === "open"){
-      ctx.fillStyle = "rgba(20,24,30,.55)";
-      poly(pts); ctx.fill();
-      ctx.setLineDash([4,3]); ctx.strokeStyle = "#6f7d8c"; ctx.lineWidth = 1;
-      poly(pts); ctx.stroke(); ctx.setLineDash([]);
-      continue;
-    }
-    ctx.fillStyle = shade(col, lit);
-    poly(pts); ctx.fill();
-    // mesh hatch
-    ctx.save(); poly(pts); ctx.clip();
-    ctx.strokeStyle = "rgba(0,0,0,.22)"; ctx.lineWidth = 1;
-    const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
-    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-    for(let i = x0 - (y1-y0); i < x1; i += Math.max(4, 7*zoom)){
-      ctx.beginPath(); ctx.moveTo(i, y0); ctx.lineTo(i + (y1-y0), y1); ctx.stroke();
-    }
-    ctx.restore();
-    ctx.strokeStyle = "rgba(10,12,15,.85)"; ctx.lineWidth = 1;
-    poly(pts); ctx.stroke();
-  }
-  // markers on the top face
-  const t = proj(x+0.5, y+0.5, z+1);
-  if(c.entrance){
-    ctx.fillStyle = "#e0703a"; ctx.font = (13*zoom)+"px system-ui"; ctx.textAlign = "center";
-    ctx.fillText("⌂", t[0], t[1] + 5*zoom);
-  }
-  if(info && info.dist && info.dist.has(k) && !c.entrance){
-    ctx.fillStyle = "rgba(230,233,238,.55)"; ctx.font = (10*zoom)+"px "+"ui-monospace,monospace";
-    ctx.textAlign = "center";
-    ctx.fillText(info.dist.get(k), t[0], t[1] + 4*zoom);
-  }
-  if(k === selected){
-    ctx.strokeStyle = "#e0a33e"; ctx.lineWidth = 2;
-    for(const fid of ["T","E","S","W","N","B"]){
-      const pts = CUBE_FACES[fid].map(v => proj(x+v[0], y+v[1], z+v[2]));
-      if(area(pts) > 0){ poly(pts); ctx.stroke(); }
-    }
-  }
-}
-
-const JOINT_COLOR = {straight:"#5fb37a", out90:"#e0a33e", in90:"#b06bd9",
-                     tee:"#5b9dd9", cross:"#d9635f"};
-
-// direction from the scene toward the camera, in world coords
-function viewDir(){
-  let a = 1, b = 1;
-  for(let i=0;i<camRot;i++){ const t = a; a = b; b = -t; }
-  return [a, b, 1];
-}
-// an edge is hidden if a cube sits between it and the camera
-function occluded(mid, dir){
-  for(let t=0.6; t<=GRID; t+=1){
-    const c = K(Math.floor(mid[0]+dir[0]*t), Math.floor(mid[1]+dir[1]*t), Math.floor(mid[2]+dir[2]*t));
-    if(cubes.has(c)) return true;
-  }
-  return false;
-}
-function drawConnectors(edges){
-  const dir = viewDir();
-  ctx.lineCap = "round";
-  for(const e of edges){
-    if(e.type === "free") continue;
-    const q = e.p.slice(); q[e.axis] += 1;
-    const mid = [(e.p[0]+q[0])/2, (e.p[1]+q[1])/2, (e.p[2]+q[2])/2];
-    const hidden = occluded(mid, dir);
-    const a = proj(e.p[0], e.p[1], e.p[2]), b = proj(q[0], q[1], q[2]);
-    ctx.strokeStyle = JOINT_COLOR[e.type];
-    ctx.globalAlpha = hidden ? 0.16 : 1;
-    ctx.lineWidth = Math.max(2, 4*zoom);
-    poly([a,b]); ctx.stroke();
-  }
-  ctx.globalAlpha = 1;
-  ctx.lineCap = "butt";
 }
 
 function draw(){
+  if(!gl) return;
+  if(meshDirty){ rebuild(); meshDirty = false; }
   const r = cv.getBoundingClientRect();
-  ctx.clearRect(0,0,r.width,r.height);
-  ctx.fillStyle = "#15181c"; ctx.fillRect(0,0,r.width,r.height);
-  drawGroundGrid();
+  gl.viewport(0,0,cv.width,cv.height);
+  gl.clearColor(BG[0],BG[1],BG[2],1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+  gl.useProgram(prog);
+  gl.uniformMatrix4fv(U.uMVP, false,
+    mul(perspective(FOV, r.width/Math.max(1,r.height), 0.1, 400), lookAt(eyePos(), cam.target, UP)));
+  gl.uniform3f(U.uLight, 0.45, 0.28, 0.85);
+  gl.uniform1f(U.uAlpha, 1);
 
-  const info = analyse();
-  const list = [...cubes.keys()].sort((a,b) => {
-    const A = parseK(a), B = parseK(b);
-    const [ax,ay] = rotXY(A[0],A[1]), [bx,by] = rotXY(B[0],B[1]);
-    return (ax+ay) - (bx+by) || A[2] - B[2];
-  });
-  for(const k of list) drawCube(k, info);
-  if(showConn) drawConnectors(classifyEdges(cubes));
+  gl.uniform1f(U.uUnlit, 1); drawBuf(gridBuf, gl.LINES);
+  gl.uniform1f(U.uUnlit, 0); drawBuf(meshBuf, gl.TRIANGLES);
 
+  // selection outline
+  const lines = [];
+  if(selected && cubes.has(selected)){
+    const [x,y,z] = parseK(selected), o = 0.02, s = [x-o,y-o,z-o], e = [x+1+o,y+1+o,z+1+o], c = hex("#e0a33e");
+    for(let i=0;i<2;i++) for(let j=0;j<2;j++){
+      pushLine(lines, [s[0],i?e[1]:s[1],j?e[2]:s[2]], [e[0],i?e[1]:s[1],j?e[2]:s[2]], c);
+      pushLine(lines, [i?e[0]:s[0],s[1],j?e[2]:s[2]], [i?e[0]:s[0],e[1],j?e[2]:s[2]], c);
+      pushLine(lines, [i?e[0]:s[0],j?e[1]:s[1],s[2]], [i?e[0]:s[0],j?e[1]:s[1],e[2]], c);
+    }
+  }
+  lineBuf = upload(lines, lineBuf && lineBuf.buf);
+  gl.uniform1f(U.uUnlit, 1); drawBuf(lineBuf, gl.LINES);
+
+  // hover ghost
+  const ghost = [];
   if(hover){
-    const [x,y] = hover;
-    const pts = CUBE_FACES.B.map(v => proj(x+v[0], y+v[1], level+v[2]));
-    ctx.fillStyle = tool === "erase" ? "rgba(217,99,95,.25)" : "rgba(224,163,62,.22)";
-    poly(pts); ctx.fill();
-    ctx.strokeStyle = tool === "erase" ? "#d9635f" : "#e0a33e"; ctx.lineWidth = 1.5;
-    poly(pts); ctx.stroke();
+    const [x,y,z] = hover.cell, o = 0.04;
+    pushBox(ghost, [x+o,y+o,z+o], [x+1-o,y+1-o,z+1-o],
+            hover.mode === "erase" ? hex("#d9635f") : hex("#e0a33e"), 0);
   }
-  // compass
-  const cx = r.width - 54, cy = r.height - 54;
-  ctx.save(); ctx.translate(cx, cy);
-  ctx.font = "12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const dirs = [["N",0,-1],["E",1,0],["S",0,1],["W",-1,0]];
-  for(const [n,dx,dy] of dirs){
-    let a = dx, b = dy;
-    for(let i=0;i<camRot;i++){ const t = a; a = -b; b = t; }
-    const px = (a-b)*TW/2*0.8, py = (a+b)*TH/2*1.6;
-    ctx.fillStyle = n === "N" ? "#e0a33e" : "#9aa4b2";
-    ctx.fillText(n, px, py);
+  ghostBuf = upload(ghost, ghostBuf && ghostBuf.buf);
+  if(ghost.length){
+    gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+    gl.uniform1f(U.uAlpha, 0.33); gl.uniform1f(U.uUnlit, 0);
+    drawBuf(ghostBuf, gl.TRIANGLES);
+    gl.depthMask(true); gl.disable(gl.BLEND); gl.uniform1f(U.uAlpha, 1);
   }
-  ctx.restore();
-  hud(info);
 }
 
-function hud(info){
-  const b = computeBOM(cubes);
-  const ft = edgeIn/12;
-  const lines = [
+function hud(){
+  const b = computeBOM(cubes), a = analyse(), ft = edgeIn/12;
+  document.getElementById("hud").textContent = [
     "cubes "+b.count+"   level "+level+"   tool "+tool,
-    "trail "+(info.diameter+1)+" cubes ≈ "+((info.diameter+1)*ft).toFixed(1)+" ft",
-    "footprint "+(info.footprint*ft*ft).toFixed(0)+" ft²   volume "+(b.count*ft*ft*ft).toFixed(0)+" ft³",
-  ];
-  document.getElementById("hud").textContent = lines.join("\n");
+    "trail "+(a.diameter+1)+" cubes ≈ "+((a.diameter+1)*ft).toFixed(1)+" ft",
+    "footprint "+(a.footprint*ft*ft).toFixed(0)+" ft²   volume "+(b.count*ft*ft*ft).toFixed(0)+" ft³",
+  ].join("\n");
 }
+
+// ---- picking
+function rayFrom(mx, my){
+  const r = cv.getBoundingClientRect();
+  const ndcx = 2*mx/r.width - 1, ndcy = 1 - 2*my/r.height;
+  const {fwd, right, upv} = camBasis();
+  const th = Math.tan(FOV/2), aspect = r.width/Math.max(1,r.height);
+  return {o: eyePos(),
+          d: norm(add(fwd, add(scale(right, ndcx*th*aspect), scale(upv, ndcy*th))))};
+}
+// Amanatides & Woo voxel walk; returns the first cube hit and the face it entered through
+function raycastVoxel(o, d, maxT){
+  let c = [Math.floor(o[0]), Math.floor(o[1]), Math.floor(o[2])];
+  const step = d.map(v => v >= 0 ? 1 : -1);
+  const tDelta = d.map(v => Math.abs(1/v));
+  const tMax = [0,1,2].map(i => (d[i] >= 0 ? Math.floor(o[i])+1-o[i] : o[i]-Math.floor(o[i])) / Math.abs(d[i]));
+  let face = [0,0,0], t = 0;
+  for(let i=0;i<400 && t<maxT;i++){
+    if(cubes.has(K(c[0],c[1],c[2]))) return {cell:c.slice(), face, t};
+    const ax = tMax[0] < tMax[1] ? (tMax[0] < tMax[2] ? 0 : 2) : (tMax[1] < tMax[2] ? 1 : 2);
+    t = tMax[ax]; tMax[ax] += tDelta[ax]; c[ax] += step[ax];
+    face = [0,0,0]; face[ax] = -step[ax];
+  }
+  return null;
+}
+// what the cursor is pointing at: an existing cube, or a spot on the current build plane
+function target(mx, my){
+  const ray = rayFrom(mx, my);
+  const hit = raycastVoxel(ray.o, ray.d, 300);
+  let plane = null;
+  if(ray.d[2] !== 0){
+    const t = (level - ray.o[2]) / ray.d[2];
+    if(t > 0){
+      const x = Math.floor(ray.o[0] + ray.d[0]*t), y = Math.floor(ray.o[1] + ray.d[1]*t);
+      if(x >= 0 && y >= 0 && x < GRID && y < GRID) plane = {cell:[x,y,level], t};
+    }
+  }
+  if(hit && (!plane || hit.t <= plane.t)) return {hit};
+  return plane ? {plane:plane.cell} : {};
+}
+function hoverAt(mx, my, shift){
+  const t = target(mx, my);
+  if(tool === "erase")  return t.hit ? {cell:t.hit.cell, mode:"erase"} : null;
+  if(tool === "build" && !shift){
+    if(t.hit) return {cell: add(t.hit.cell, t.hit.face), mode:"build"};
+    if(t.plane) return {cell:t.plane, mode:"build"};
+    return null;
+  }
+  return t.hit ? {cell:t.hit.cell, mode:"pick"} : null;
+}
+function frameAll(){
+  if(!cubes.size){ cam.target = [GRID/2, GRID/2, 1]; cam.r = 26; draw(); return; }
+  let lo = [ 1e9, 1e9, 1e9], hi = [-1e9,-1e9,-1e9];
+  for(const k of cubes.keys()){
+    const c = parseK(k);
+    for(let i=0;i<3;i++){ lo[i] = Math.min(lo[i], c[i]); hi[i] = Math.max(hi[i], c[i]+1); }
+  }
+  cam.target = [0,1,2].map(i => (lo[i]+hi[i])/2);
+  const span = Math.max(hi[0]-lo[0], hi[1]-lo[1], hi[2]-lo[2]);
+  cam.r = clamp(span/(2*Math.tan(FOV/2)) * 2.1, 6, 120);
+  draw();
+}
+const fitView = frameAll;
 
 // ---------------------------------------------------------------- editing
 function snapshot(){
@@ -647,17 +724,28 @@ function erase(x,y,z){
   if(selected === k) selected = null;
   return true;
 }
-function click(x,y){
-  const k = K(x,y,level);
-  if(tool === "erase"){ erase(x,y,level); }
-  else if(tool === "entrance"){
-    if(!cubes.has(k)) return;
+function inBounds(c){ return c[0]>=0 && c[1]>=0 && c[2]>=0 && c[0]<GRID && c[1]<GRID && c[2]<LEVELS; }
+
+function actAt(mx, my, shift){
+  const t = target(mx, my);
+  const hitK = t.hit ? K(t.hit.cell[0], t.hit.cell[1], t.hit.cell[2]) : null;
+  if(tool === "erase"){
+    if(hitK) erase(t.hit.cell[0], t.hit.cell[1], t.hit.cell[2]);
+  } else if(tool === "entrance"){
+    if(!hitK) return;
     snapshot();
-    const c = cubes.get(k); c.entrance = !c.entrance;
-    selected = k;
-  } else {
-    if(cubes.has(k)) selected = (selected === k ? null : k);
-    else place(x,y,level);
+    const c = cubes.get(hitK); c.entrance = !c.entrance;
+    selected = hitK;
+  } else if(shift || tool === "select"){
+    selected = hitK && selected !== hitK ? hitK : null;
+  } else {                                   // build: stick a cube on the face you clicked
+    if(t.hit){
+      const c = add(t.hit.cell, t.hit.face);
+      if(!inBounds(c)) return toast("outside the yard");
+      place(c[0], c[1], c[2]);
+    } else if(t.plane){
+      place(t.plane[0], t.plane[1], t.plane[2]);
+    } else return;
   }
   refresh();
 }
@@ -737,7 +825,7 @@ function renderBOM(){
   }
   line(partName("door"), b.door, inv.door, track.door);
 
-  head("Connectors");
+  head("Side connectors (vertical edges)");
   JOINT_IDS.forEach(j => line(tag(j)+partName(j), b[j], inv[j], track[j]));
   head("Fasteners");
   line(partName("screw"), b.screw, inv.screw, track.screw);
@@ -745,13 +833,11 @@ function renderBOM(){
   $("bomTable").innerHTML = "<tr><th>Part</th><th>Need</th><th>Have</th><th>Spare</th></tr>" + rows.join("");
 
   const miss = shortOf(b);
-  const vert = JOINT_IDS.reduce((s,j) => s + b.vert[j], 0);
   $("bomNote").innerHTML = b.count === 0 ? "Place cubes to see the parts needed."
     : (miss.length ? "<b style='color:var(--bad)'>Short on "+miss.map(m => m === "panels" ? "panels" : partName(m)).join(", ")+
         ".</b><br>" : "<b style='color:var(--good)'>Buildable with the parts you have.</b><br>")
       + b.shared+" shared faces save "+b.shared+" panels. "
-      + vert+" of the connectors run vertically, "+(JOINT_IDS.reduce((s,j)=>s+b[j],0)-vert)+" horizontally. "
-      + b.freeEdges+" panel edges have nothing to join to.";
+      + b.horiz+" horizontal roof / floor joiners are needed but not tracked.";
 }
 
 function renderStats(){
@@ -765,7 +851,8 @@ function renderStats(){
     ["Dead ends", a.deadEnds],
     ["Junctions", a.junctions],
     ["Open passages", b.shared],
-    ["Connector joints", JOINT_IDS.reduce((s,j) => s + b[j], 0)],
+    ["Side connectors", JOINT_IDS.reduce((s,j) => s + b[j], 0)],
+    ["Roof / floor joiners", b.horiz],
     ["Unjoined panel edges", b.freeEdges],
     ["Reachable from door", a.reached ? a.reached+" / "+b.count : "no door set"],
   ];
@@ -818,6 +905,8 @@ function renderSelection(){
 
 function refresh(redraw = true){
   renderBOM(); renderStats(); renderCapability(); renderSelection();
+  meshDirty = true;
+  hud();
   if(redraw) draw();
   save();
 }
@@ -826,7 +915,7 @@ function refresh(redraw = true){
 const STORE = "chicken-trail-v1";
 function save(){
   try{
-    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, connPerEdge, screwsPerConn, showConn}));
+    localStorage.setItem(STORE, JSON.stringify({cubes:[...cubes], inv, track, letter, rules, edgeIn, connPerEdge, screwsPerConn, showConn, hideRoof}));
   }catch(e){}
 }
 function load(){
@@ -840,64 +929,68 @@ function load(){
     connPerEdge = s.connPerEdge || connPerEdge;
     screwsPerConn = s.screwsPerConn == null ? screwsPerConn : s.screwsPerConn;
     if(s.showConn != null) showConn = s.showConn;
+    if(s.hideRoof != null) hideRoof = s.hideRoof;
   }catch(e){}
 }
 
 // ---------------------------------------------------------------- wiring
-function fitView(){
-  camRot = camRot; panX = panY = 0; zoom = 1;
-  if(!cubes.size){ draw(); return; }
-  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  for(const k of cubes.keys()){
-    const [x,y,z] = parseK(k);
-    for(const dx of [0,1]) for(const dy of [0,1]) for(const dz of [0,1]){
-      const p = world(x+dx, y+dy, z+dz);
-      x0 = Math.min(x0,p[0]); x1 = Math.max(x1,p[0]);
-      y0 = Math.min(y0,p[1]); y1 = Math.max(y1,p[1]);
+let drag = null;
+cv.addEventListener("mousedown", e => {
+  drag = {x:e.clientX, y:e.clientY, moved:0, btn:e.button, shift:e.shiftKey};
+  if(e.button !== 0) e.preventDefault();
+});
+cv.addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("mousemove", e => {
+  if(drag){
+    drag.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+    if(drag.btn === 0 && !drag.shift){                       // orbit
+      cam.az -= e.movementX*0.008;
+      cam.el = clamp(cam.el + e.movementY*0.008, -1.45, 1.45);
+    } else {                                                 // pan
+      const {right, upv} = camBasis(), s = cam.r*0.0015;
+      cam.target = add(cam.target, add(scale(right, -e.movementX*s), scale(upv, e.movementY*s)));
     }
+    hover = null; draw();
+    return;
   }
   const r = cv.getBoundingClientRect();
-  zoom = Math.min(3, Math.max(0.3, Math.min((r.width-140)/(x1-x0), (r.height-140)/(y1-y0))));
-  panX = -((x0+x1)/2)*zoom;          // screen centre already sits at (originX, originY)
-  panY = -((y0+y1)/2)*zoom;
-  draw();
-}
-
-cv.addEventListener("mousemove", e => {
-  const r = cv.getBoundingClientRect();
-  if(e.buttons & 6){ panX += e.movementX; panY += e.movementY; draw(); return; }
-  hover = cellAt(e.clientX - r.left, e.clientY - r.top, level);
-  draw();
+  if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom){
+    if(hover){ hover = null; draw(); }
+    return;
+  }
+  const h = hoverAt(e.clientX - r.left, e.clientY - r.top, e.shiftKey);
+  const same = (!h && !hover) || (h && hover && h.mode === hover.mode &&
+               h.cell[0] === hover.cell[0] && h.cell[1] === hover.cell[1] && h.cell[2] === hover.cell[2]);
+  hover = h;
+  if(!same) draw();
 });
-cv.addEventListener("mouseleave", () => { hover = null; draw(); });
-cv.addEventListener("mousedown", e => { if(e.button !== 0) e.preventDefault(); });
-cv.addEventListener("contextmenu", e => e.preventDefault());
-cv.addEventListener("click", e => {
-  const r = cv.getBoundingClientRect();
-  const c = cellAt(e.clientX - r.left, e.clientY - r.top, level);
-  if(c) click(c[0], c[1]);
+addEventListener("mouseup", e => {
+  if(drag && drag.btn === 0 && drag.moved < 5){
+    const r = cv.getBoundingClientRect();
+    if(e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom)
+      actAt(e.clientX - r.left, e.clientY - r.top, drag.shift);
+  }
+  drag = null;
 });
 cv.addEventListener("wheel", e => {
   e.preventDefault();
-  const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
-  const f = e.deltaY < 0 ? 1.1 : 1/1.1, nz = Math.min(4, Math.max(0.25, zoom*f));
-  panX = (mx - originX) - ((mx - originX) - panX)*(nz/zoom);   // keep point under cursor fixed
-  panY = (my - originY) - ((my - originY) - panY)*(nz/zoom);
-  zoom = nz;
-  hover = cellAt(mx, my, level);
+  cam.r = clamp(cam.r * (e.deltaY < 0 ? 1/1.12 : 1.12), 3, 150);
   draw();
 }, {passive:false});
 
 addEventListener("keydown", e => {
   if(/input|select|textarea/i.test(e.target.tagName)) return;
   const k = e.key.toLowerCase();
-  if(k >= "1" && k <= String(LEVELS)){ level = +k - 1; syncUI(); draw(); }
-  else if(k === "q"){ camRot = (camRot+3)%4; draw(); }
-  else if(k === "e"){ camRot = (camRot+1)%4; draw(); }
+  if(k >= "1" && k <= String(LEVELS)){ level = +k - 1; meshDirty = true; syncUI(); draw(); }
+  else if(k === "q"){ cam.az -= Math.PI/12; draw(); }
+  else if(k === "e"){ cam.az += Math.PI/12; draw(); }
   else if(k === "b"){ tool = "build"; syncUI(); }
   else if(k === "x"){ tool = "erase"; syncUI(); }
   else if(k === "d"){ tool = "entrance"; syncUI(); }
-  else if(k === "c"){ showConn = !showConn; syncUI(); draw(); }
+  else if(k === "s"){ tool = "select"; syncUI(); }
+  else if(k === "f"){ frameAll(); }
+  else if(k === "c"){ showConn = !showConn; meshDirty = true; syncUI(); draw(); }
+  else if(k === "h"){ hideRoof = !hideRoof; meshDirty = true; syncUI(); draw(); }
   else if(k === "z"){ doUndo(); }
   else if(k === "delete" || k === "backspace"){ if(selected){ const [x,y,z] = parseK(selected); erase(x,y,z); refresh(); } }
 });
@@ -908,8 +1001,8 @@ function doUndo(){
 }
 
 document.querySelectorAll(".tool").forEach(b => b.onclick = () => { tool = b.dataset.tool; syncUI(); });
-$("rotL").onclick = () => { camRot = (camRot+3)%4; draw(); };
-$("rotR").onclick = () => { camRot = (camRot+1)%4; draw(); };
+$("rotL").onclick = () => { cam.az -= Math.PI/8; draw(); };
+$("rotR").onclick = () => { cam.az += Math.PI/8; draw(); };
 $("fit").onclick = fitView;
 $("undo").onclick = doUndo;
 $("clear").onclick = () => { snapshot(); cubes = new Map(); selected = null; refresh(); };
@@ -922,7 +1015,8 @@ $("pooled").onchange = e => { rules.pooled = e.target.checked; refresh(false); }
 $("edge").oninput = e => { edgeIn = parseFloat(e.target.value) || 39; refresh(false); };
 $("cpe").oninput = e => { connPerEdge = Math.max(1, parseInt(e.target.value)||1); refresh(false); };
 $("spc").oninput = e => { screwsPerConn = Math.max(0, parseInt(e.target.value)||0); refresh(false); };
-$("showConn").onchange = e => { showConn = e.target.checked; draw(); save(); };
+$("showConn").onchange = e => { showConn = e.target.checked; meshDirty = true; draw(); save(); };
+$("hideRoof").onchange = e => { hideRoof = e.target.checked; meshDirty = true; draw(); save(); };
 ["roofAll","groundFloor","interFloor","support"].forEach(r =>
   $("r-"+r).onchange = e => { rules[r] = e.target.checked; refresh(); });
 document.querySelectorAll(".card>h2").forEach(h =>
@@ -959,16 +1053,18 @@ $("png").onclick = () => {
 };
 
 function syncUI(){
+  hud();
   document.querySelectorAll(".tool").forEach(b => b.classList.toggle("on", b.dataset.tool === tool));
   $("levelBtns").innerHTML = Array.from({length:LEVELS}, (_,i) =>
     "<button class='sm lvl"+(i===level?" on":"")+"' data-lvl='"+i+"'>"+i+"</button>").join(" ");
   $("levelBtns").querySelectorAll(".lvl").forEach(b =>
-    b.onclick = () => { level = +b.dataset.lvl; syncUI(); draw(); });
+    b.onclick = () => { level = +b.dataset.lvl; meshDirty = true; syncUI(); draw(); });
   $("pooled").checked = rules.pooled;
   $("edge").value = edgeIn;
   $("cpe").value = connPerEdge;
   $("spc").value = screwsPerConn;
   $("showConn").checked = showConn;
+  $("hideRoof").checked = hideRoof;
   JOINT_IDS.forEach(j => { const el = $("lg-"+j); if(el)
     el.textContent = (letter[j] ? letter[j]+" \u2013 " : "") + partName(j).replace(/ \(.*\)/,""); });
   ["roofAll","groundFloor","interFloor","support"].forEach(r => $("r-"+r).checked = rules[r]);
