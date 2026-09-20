@@ -849,10 +849,10 @@ function renderBOM(){
   const b = computeBOM(cubes);
   const rows = [];
   const line = (name, need, have, tracked, sub) => {
-    const spare = have - need, cls = tracked && spare < 0 ? "short" : "ok";
+    const spare = have - need, cls = (tracked && !sub && spare < 0) ? "short" : "ok";
     rows.push("<tr class='"+cls+"'><td"+(sub?" style='padding-left:12px;color:var(--dim)'":"")+">"+name+"</td>"+
       "<td class='num'>"+need+"</td><td class='num'>"+(tracked ? have : "\u2014")+"</td>"+
-      "<td class='num spare'>"+(tracked ? (spare >= 0 ? "+"+spare : spare) : "")+"</td></tr>");
+      "<td class='num spare'>"+(tracked && !sub ? (spare >= 0 ? "+"+spare : spare) : "")+"</td></tr>");
   };
   const head = t => rows.push("<tr><th colspan='4' style='padding-top:7px'>"+t+"</th></tr>");
 
@@ -861,7 +861,7 @@ function renderBOM(){
     const need = PANEL_IDS.reduce((s,p) => s + b[p], 0);
     const have = PANEL_IDS.reduce((s,p) => s + inv[p], 0);
     line("Pooled panels", need, have, PANEL_IDS.some(p => track[p]));
-    PANEL_IDS.forEach(p => line("\u2022 "+partName(p), b[p], 0, false, true));
+    PANEL_IDS.forEach(p => line("\u2022 "+partName(p), b[p], inv[p], true, true));
   } else {
     PANEL_IDS.forEach(p => line(partName(p), b[p], inv[p], track[p]));
   }
