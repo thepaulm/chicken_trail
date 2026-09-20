@@ -53,6 +53,10 @@
   #legend{position:absolute;right:10px;top:10px;background:rgba(21,24,28,.85);border:1px solid var(--line);
     border-radius:6px;padding:7px 10px;font-size:11px;color:var(--dim);pointer-events:none}
   #legend b{color:var(--txt);font-weight:500}
+  #compass{position:absolute;right:22px;bottom:22px;width:86px;height:86px;pointer-events:none;
+    font-size:11px;color:var(--dim)}
+  #compass span{position:absolute;transform:translate(-50%,-50%);line-height:1}
+  #compass span.n{color:var(--acc);font-weight:600}
   #toast{position:absolute;left:50%;transform:translateX(-50%);bottom:24px;background:#000a;border:1px solid var(--line);
     border-radius:20px;padding:6px 14px;opacity:0;transition:opacity .2s;pointer-events:none}
   .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
@@ -162,6 +166,8 @@
       <span class="swatch" style="background:#d9635f"></span><span id="lg-cross">cross</span><br>
       <span class="swatch" style="background:#78838f"></span>roof / floor joiner
     </div>
+    <div id="compass"><span class="n" data-dir="N">N</span><span data-dir="E">E</span>
+      <span data-dir="S">S</span><span data-dir="W">W</span></div>
     <div id="toast"></div>
   </main>
 </div>
@@ -625,12 +631,25 @@ function draw(){
     pushBox(ghost, [x+o,y+o,z+o], [x+1-o,y+1-o,z+1-o],
             hover.mode === "erase" ? hex("#d9635f") : hex("#e0a33e"), 0);
   }
+  drawCompass();
   ghostBuf = upload(ghost, ghostBuf && ghostBuf.buf);
   if(ghost.length){
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
     gl.uniform1f(U.uAlpha, 0.33); gl.uniform1f(U.uUnlit, 0);
     drawBuf(ghostBuf, gl.TRIANGLES);
     gl.depthMask(true); gl.disable(gl.BLEND); gl.uniform1f(U.uAlpha, 1);
+  }
+}
+
+const COMPASS = {N:[0,-1], S:[0,1], E:[1,0], W:[-1,0]};
+function drawCompass(){
+  const R = 30, sa = Math.sin(cam.az), ca = Math.cos(cam.az), fore = Math.max(0.25, Math.sin(cam.el));
+  for(const el of document.querySelectorAll("#compass span")){
+    const [wx,wy] = COMPASS[el.dataset.dir];
+    const right = wx*(-sa) + wy*ca;               // screen-right component
+    const down  = (wx*ca + wy*sa) * fore;         // screen-down, foreshortened by the tilt
+    el.style.left = (43 + right*R) + "px";
+    el.style.top  = (43 + down*R) + "px";
   }
 }
 
@@ -887,6 +906,7 @@ function renderSelection(){
   card.classList.remove("collapsed");
   const [x,y,z] = parseK(selected), c = cubes.get(selected);
   const faces = [["N","North"],["S","South"],["E","East"],["W","West"],["T","Top"],["B","Bottom"]];
+  const shared = faces.filter(f => faceUse(cubes, selected, f[0]) === "shared").length;
   body.innerHTML = "<div class='row'><span class='pill'>x "+x+" &middot; y "+y+" &middot; level "+z+"</span>"+
     (c.entrance ? "<span class='pill' style='color:var(--acc)'>coop door</span>" : "")+"</div>"+
     "<div class='grid2'>"+ faces.map(([id,name]) => {
@@ -899,7 +919,9 @@ function renderSelection(){
     }).join("") + "</div>" +
     "<div class='row' style='margin-top:8px'><button class='sm' id='selDel'>Delete cube</button>"+
     "<button class='sm' id='selReset'>Reset faces</button></div>"+
-    "<div class='hint'>Click a face to cycle auto &rarr; wall &rarr; open &rarr; door.</div>";
+    "<div class='hint'>Click a face to cycle auto &rarr; wall &rarr; open &rarr; door. "+
+    (shared ? shared+" face"+(shared>1?"s are":" is")+" shared with a neighbour &mdash; those stay open passages "+
+      "whatever you set. " : "")+"Use the compass in the corner for bearings.</div>";
   body.querySelectorAll("[data-face]").forEach(el => el.onclick = () => {
     snapshot();
     const id = el.dataset.face;

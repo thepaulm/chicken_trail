@@ -43,8 +43,11 @@ build. The letters are editable - type the codes off your own parts bags into th
 Two multipliers sit under the parts list: **connectors per joined edge** (if a single edge
 takes more than one piece) and **screws per connector**, which drives the fastener total.
 
-Any single face can be overridden in the *Selected cube* card:
-`auto -> wall -> open -> door`.
+Any single face can be overridden in the *Selected cube* card: shift-click a cube (or use the
+Select tool) and click a face to cycle `auto -> wall -> open -> door`. That is how a gate gets
+into a wall. Faces shared with a neighbouring cube stay open passages whatever they are set to,
+so a door has to go on an exterior face. The compass in the corner of the view gives the
+bearings the face names use.
 
 ## Cards
 
