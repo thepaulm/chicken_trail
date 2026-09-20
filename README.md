@@ -46,7 +46,8 @@ takes more than one piece) and **screws per connector**, which drives the fasten
 Any single face can be overridden in the *Selected cube* card: shift-click a cube (or use the
 Select tool) and click a face to cycle `auto -> wall -> open -> door`. That is how a gate gets
 into a wall. Faces shared with a neighbouring cube stay open passages whatever they are set to,
-so a door has to go on an exterior face. The compass in the corner of the view gives the
+so a door has to go on an exterior face. Door panels draw as a solid sheet with three view
+slots, mesh panels as see-through wire. The compass in the corner of the view gives the
 bearings the face names use.
 
 ## Cards

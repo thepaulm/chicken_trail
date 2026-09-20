@@ -475,7 +475,10 @@ precision mediump float;
 varying vec3 vNrm; varying vec3 vCol; varying vec2 vUV; varying float vFlag;
 uniform vec3 uLight; uniform float uUnlit; uniform float uAlpha;
 void main(){
-  if(vFlag > 0.5){                       // wire-mesh panel: keep the frame and the wires, drop the holes
+  if(vFlag > 1.5){                       // door / gate: solid sheet with three view slots
+    float y = (vUV.y - 0.40) / 0.12;
+    if(vUV.x > 0.22 && vUV.x < 0.78 && y > 0.0 && y < 3.0 && fract(y) < 0.42) discard;
+  } else if(vFlag > 0.5){                // wire-mesh panel: keep the frame and the wires, drop the holes
     vec2 f = fract(vUV*6.0);
     vec2 d = min(f, 1.0-f);
     if(min(d.x,d.y) > 0.11 && min(min(vUV.x,1.0-vUV.x), min(vUV.y,1.0-vUV.y)) > 0.045) discard;
@@ -556,7 +559,8 @@ function rebuild(){
       const u = faceUse(cubes, k, fid);
       if(!PANEL_USE[u]) continue;
       if(hideRoof && fid === "T") continue;          // view only - still counted in the BOM
-      pushQuad(tri, CUBE_FACES[fid].map(v => [x+v[0], y+v[1], z+v[2]]), FACE_N[fid], COLOR[u], 1);
+      pushQuad(tri, CUBE_FACES[fid].map(v => [x+v[0], y+v[1], z+v[2]]), FACE_N[fid], COLOR[u],
+               u === "door" ? 2 : 1);
     }
   }
   for(const [k,c] of cubes){                         // coop door marker
