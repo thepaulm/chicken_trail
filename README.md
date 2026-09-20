@@ -12,11 +12,14 @@ add the next cube against it.
 A design is a set of unit cubes on a 24 x 24 grid, up to 4 levels high.
 Panels are counted per cube face:
 
+One panel does every job — sides, roofs and floors are the same part out of one stock, so the
+bill of materials counts a single **Panel** line with a need-only breakdown by job under it.
+
 - a face shared with a neighbouring cube uses **no panel** — that is the passage the birds walk through
-- an exterior side face uses a **side panel**
-- an open top uses a **roof panel** (rule: *Roof every open top*)
+- an exterior side face uses a panel
+- an open top uses a panel (rule: *Roof every open top*)
 - ground-level bottoms are bare soil unless *Floor panels at ground level* is on
-- a boundary between stacked levels uses a **floor panel** unless that rule is off
+- a boundary between stacked levels uses a panel unless that rule is off
 ### Connectors
 
 Connectors sit on **edges**, not corners, and the type is forced by the geometry: for every
@@ -52,7 +55,7 @@ bearings the face names use.
 
 ## Cards
 
-- **Parts on hand** — your inventory. Untracked parts are tallied but never limit a build.
+- **Parts on hand** — your inventory, one row per real part. Untracked parts are tallied but never limit a build.
   Set the cube edge to match your panels (a 1 m panel is 39.4 in).
 - **Bill of materials** — need vs. have vs. spare for the current design.
 - **This design** — footprint, volume, longest trail, dead ends, junctions, reachability

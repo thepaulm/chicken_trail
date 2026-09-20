@@ -111,10 +111,10 @@
     <div class="card" id="c-inv"><h2>Parts on hand</h2><div class="body">
       <table id="invTable"></table>
       <div class="sep"></div>
-      <div class="row"><input type="checkbox" id="pooled"><label for="pooled">Panels are interchangeable (one pool)</label></div>
       <div class="row"><label>Cube edge</label><input type="number" id="edge" step="0.5"> <span class="pill">inches</span></div>
       <div class="row"><label>Screws per connector</label><input type="number" id="spc" min="0" step="1"></div>
-      <div class="hint">Only the vertical side connectors are tracked; roof and floor joiners are
+      <div class="hint">One panel does every job &mdash; sides, roofs and floors all come out of the same
+      stock. Only the vertical side connectors are tracked; roof and floor joiners are
       counted in <i>This design</i> but never limit a build. Letters are yours to set &mdash; type the code off your parts bag or manual into the
       box beside each connector. <b>Per</b> is how many pieces of hardware one joined edge eats &mdash;
       a 90&deg; corner takes two, a straight joiner one. Untracked parts are still tallied but never
@@ -193,9 +193,7 @@ const FACE_MODES = ["auto","wall","open","door"];
 // A connector sits on a lattice EDGE and joins the panels that meet along it.
 // Type is fixed by how many panels meet and at what angle - see classifyEdges().
 const PARTS = [
-  {id:"wall",     group:"Panels",     name:"Side panel",            have:24, track:true},
-  {id:"roof",     group:"Panels",     name:"Roof panel",            have:12, track:true},
-  {id:"floor",    group:"Panels",     name:"Floor panel",           have:0,  track:true},
+  {id:"panel",    group:"Panels",     name:"Panel",                 have:36, track:true},
   {id:"door",     group:"Panels",     name:"Door / gate",           have:2,  track:true},
   {id:"straight", group:"Side connectors", name:"Straight joiner", have:0, track:false, letter:"E"},
   {id:"out90",    group:"Side connectors", name:"Outside 90\u00b0",  have:0, track:false, letter:"D"},
@@ -205,12 +203,12 @@ const PARTS = [
   {id:"screw",    group:"Fasteners",  name:"Screw + wingnut",       have:0, track:false, letter:""},
 ];
 const JOINT_IDS = ["straight","out90","in90","tee","cross"];
-const PANEL_IDS = ["wall","roof","floor"];
+const PANEL_USES = ["wall","roof","floor"];   // one part, three jobs
 const PANEL_USE = {wall:1, roof:1, floor:1, door:1};
 
 let cubes = new Map();                 // "x,y,z" -> {faces:{}, entrance:bool}
 let inv = {}, track = {}, letter = {};
-let rules = {roofAll:true, groundFloor:false, interFloor:true, support:true, pooled:true};
+let rules = {roofAll:true, groundFloor:false, interFloor:true, support:true};
 let edgeIn = 39;                       // cube edge, inches
 // pieces of hardware per joined edge, per connector type - a 90 takes two, a straight one
 let perJoint = {straight:1, out90:2, in90:2, tee:2, cross:2};
@@ -299,6 +297,7 @@ function classifyEdges(map){
 function computeBOM(map){
   const r = {};
   PARTS.forEach(p => r[p.id] = 0);
+  PANEL_USES.forEach(u => r[u] = 0);           // tallied by job, bought as one part
   let openings = 0, shared = 0;
   for(const k of map.keys()){
     for(const fid of ["E","W","S","N","T","B"]){
@@ -316,6 +315,7 @@ function computeBOM(map){
     if(e.axis === 2){ r[e.type] += perJoint[e.type]; jointEdges++; }
     else horiz++;
   }
+  r.panel = PANEL_USES.reduce((s,u) => s + r[u], 0);
   r.screw = JOINT_IDS.reduce((s,j) => s + r[j], 0) * screwsPerConn;
   return Object.assign(r, {openings, shared:shared/2, count:map.size, edges, horiz, freeEdges, jointEdges});
 }
@@ -323,14 +323,8 @@ function computeBOM(map){
 // parts a build is short of; [] means buildable
 function shortOf(b){
   const out = [];
-  if(rules.pooled){
-    const need = PANEL_IDS.reduce((s,p) => s + b[p], 0);
-    const have = PANEL_IDS.reduce((s,p) => s + (track[p] ? inv[p] : 0), 0);
-    if(PANEL_IDS.some(p => track[p]) && need > have) out.push("panels");
-  } else {
-    for(const p of PANEL_IDS) if(track[p] && b[p] > inv[p]) out.push(p);
-  }
-  for(const p of ["door", ...JOINT_IDS, "screw"]) if(track[p] && b[p] > inv[p]) out.push(p);
+  for(const p of ["panel", "door", ...JOINT_IDS, "screw"])
+    if(track[p] && b[p] > inv[p]) out.push(p);
   return out;
 }
 
@@ -857,14 +851,9 @@ function renderBOM(){
   const head = t => rows.push("<tr><th colspan='4' style='padding-top:7px'>"+t+"</th></tr>");
 
   head("Panels");
-  if(rules.pooled){
-    const need = PANEL_IDS.reduce((s,p) => s + b[p], 0);
-    const have = PANEL_IDS.reduce((s,p) => s + inv[p], 0);
-    line("Pooled panels", need, have, PANEL_IDS.some(p => track[p]));
-    PANEL_IDS.forEach(p => line("\u2022 "+partName(p), b[p], inv[p], true, true));
-  } else {
-    PANEL_IDS.forEach(p => line(partName(p), b[p], inv[p], track[p]));
-  }
+  line(partName("panel"), b.panel, inv.panel, track.panel);
+  const USE_NAME = {wall:"as sides", roof:"as roofs", floor:"as floors"};
+  PANEL_USES.forEach(u => line("\u2022 "+USE_NAME[u], b[u], 0, false, true));
   line(partName("door"), b.door, inv.door, track.door);
 
   head("Side connectors (vertical edges)");
@@ -876,7 +865,7 @@ function renderBOM(){
 
   const miss = shortOf(b);
   $("bomNote").innerHTML = b.count === 0 ? "Place cubes to see the parts needed."
-    : (miss.length ? "<b style='color:var(--bad)'>Short on "+miss.map(m => m === "panels" ? "panels" : partName(m)).join(", ")+
+    : (miss.length ? "<b style='color:var(--bad)'>Short on "+miss.map(partName).join(", ")+
         ".</b><br>" : "<b style='color:var(--good)'>Buildable with the parts you have.</b><br>")
       + b.shared+" shared faces save "+b.shared+" panels. "
       + b.horiz+" horizontal roof / floor joiners are needed but not tracked.";
@@ -905,7 +894,7 @@ function renderStats(){
 }
 
 function renderCapability(){
-  const label = id => id === "panels" ? "panels" : (letter[id] ? letter[id]+" \u2013 " : "")+partName(id);
+  const label = id => (letter[id] ? letter[id]+" \u2013 " : "")+partName(id);
   $("capTable").innerHTML = "<tr><th>Shape</th><th>Max</th><th>Limited by</th></tr>" +
     capability().map(c =>
       "<tr><td>"+c.name+"</td><td class='num'>"+c.cubes+"</td><td style='color:var(--dim)'>"+
@@ -970,8 +959,12 @@ function load(){
     const s = JSON.parse(localStorage.getItem(STORE) || "null");
     if(!s) return;
     cubes = new Map(s.cubes || []);
-    Object.assign(inv, s.inv || {}); Object.assign(track, s.track || {});
+    const old = s.inv || {};
+    if(old.panel == null && (old.wall != null || old.roof != null || old.floor != null))
+      old.panel = (old.wall||0) + (old.roof||0) + (old.floor||0);   // they were always one pool
+    Object.assign(inv, old); Object.assign(track, s.track || {});
     Object.assign(letter, s.letter || {}); Object.assign(rules, s.rules || {});
+    delete rules.pooled;
     edgeIn = s.edgeIn || edgeIn;
     Object.assign(perJoint, s.perJoint || {});
     screwsPerConn = s.screwsPerConn == null ? screwsPerConn : s.screwsPerConn;
@@ -1058,7 +1051,6 @@ $("preset").onchange = e => {
   if(g){ setCells(g()); refresh(); fitView(); }
   e.target.value = "";
 };
-$("pooled").onchange = e => { rules.pooled = e.target.checked; refresh(false); };
 $("edge").oninput = e => { edgeIn = parseFloat(e.target.value) || 39; refresh(false); };
 $("spc").oninput = e => { screwsPerConn = Math.max(0, parseInt(e.target.value)||0); refresh(false); };
 $("showConn").onchange = e => { showConn = e.target.checked; meshDirty = true; draw(); save(); };
@@ -1105,7 +1097,6 @@ function syncUI(){
     "<button class='sm lvl"+(i===level?" on":"")+"' data-lvl='"+i+"'>"+i+"</button>").join(" ");
   $("levelBtns").querySelectorAll(".lvl").forEach(b =>
     b.onclick = () => { level = +b.dataset.lvl; meshDirty = true; syncUI(); draw(); });
-  $("pooled").checked = rules.pooled;
   $("edge").value = edgeIn;
   $("spc").value = screwsPerConn;
   $("showConn").checked = showConn;
