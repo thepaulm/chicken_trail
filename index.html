@@ -71,7 +71,7 @@
         <button class="tool on" data-tool="build">Build</button>
         <button class="tool" data-tool="erase">Erase</button>
         <button class="tool" data-tool="select">Select</button>
-        <button class="tool" data-tool="entrance">Coop door</button>
+        <button class="tool" data-tool="entrance" title="Mark the cube that connects to the coop. Used for reach analysis - it costs no parts.">Coop door</button>
       </div>
       <div class="row"><label>Level</label><span id="levelBtns"></span></div>
       <div class="row">
@@ -96,6 +96,8 @@
       </div>
       <div class="hint">Click a cube face to add the next cube against it, or click the ground to start one.
       Drag to orbit, right-drag to pan, wheel to zoom. Shift-click inspects a cube.
+      <b>Coop door</b> marks where the trail meets the coop &mdash; it drives the reach check, not the parts list;
+      a real gate panel is a face override on the selected cube.
       Keys: <b>1-4</b> ground level, <b>q/e</b> orbit, <b>f</b> frame all, <b>b/x/s/d</b> tools,
       <b>c</b> connectors, <b>h</b> roof, <b>z</b> undo.</div>
     </div></div>
@@ -398,7 +400,9 @@ function analyse(){
   const entrance = keys.find(k => cubes.get(k).entrance);
   if(entrance){ const d = bfs(entrance); for(const [k,v] of d) dist.set(k,v); }
   const foot = new Set(keys.map(k => { const [x,y] = parseK(k); return x+","+y; }));
-  return {components, diameter, deadEnds, junctions, footprint:foot.size, dist,
+  let maxDist = 0;
+  for(const v of dist.values()) maxDist = Math.max(maxDist, v);
+  return {components, diameter, deadEnds, junctions, footprint:foot.size, dist, maxDist,
           reached: entrance ? dist.size : 0};
 }
 
@@ -548,6 +552,11 @@ function rebuild(){
       if(hideRoof && fid === "T") continue;          // view only - still counted in the BOM
       pushQuad(tri, CUBE_FACES[fid].map(v => [x+v[0], y+v[1], z+v[2]]), FACE_N[fid], COLOR[u], 1);
     }
+  }
+  for(const [k,c] of cubes){                         // coop door marker
+    if(!c.entrance) continue;
+    const [x,y,z] = parseK(k);
+    pushBox(tri, [x+0.06,y+0.06,z+0.01], [x+0.94,y+0.94,z+0.07], COLOR.door, 0);
   }
   if(showConn) for(const e of classifyEdges(cubes)){
     if(e.type === "free") continue;
@@ -855,6 +864,7 @@ function renderStats(){
     ["Roof / floor joiners", b.horiz],
     ["Unjoined panel edges", b.freeEdges],
     ["Reachable from door", a.reached ? a.reached+" / "+b.count : "no door set"],
+    ["Furthest cube from door", a.reached ? a.maxDist+" cubes / "+(a.maxDist*ft).toFixed(1)+" ft" : "\u2014"],
   ];
   $("statTable").innerHTML = rows.map(r =>
     "<tr><td>"+r[0]+"</td><td class='num'>"+r[1]+"</td></tr>").join("");
